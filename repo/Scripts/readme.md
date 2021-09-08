@@ -1,1 +1,1 @@
-Some scripts for hgraph2graph project
+Some scripts for molecule projects
