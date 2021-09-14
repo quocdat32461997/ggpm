@@ -1,0 +1,3 @@
+[submodule "hg2g"]
+	path = hg2g
+	url = https://github.com/wengong-jin/hgraph2graph
