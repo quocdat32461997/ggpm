@@ -1,2 +1,3 @@
-from ggpm.datasets import *
-from ggpm.graph_modeling import *
+from ggpm.dataset import *
+from ggpm.mol_graph import *
+from ggpm.vocab import *
