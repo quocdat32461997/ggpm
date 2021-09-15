@@ -41,7 +41,10 @@ if __name__ == "__main__":
     data = data.dropna(how='all', subset=['SMILES'])
     # remove SMIELS duplicates
     data = data.drop_duplicates(subset=['SMILES'])
-    data.to_csv('examples.csv')
+
+    # save as cleaned-data
+    data = data.reset_index(drop=True)
+    data.to_csv('/'.join(args.data.split('/')[:-1] + ['cleaned_data.csv']))
 
     # parase into batches for parallel programming
     data = list(data['SMILES'])
@@ -53,6 +56,6 @@ if __name__ == "__main__":
     vocab = [(x,y) for vocab in vocab_list for x,y in vocab]
     vocab = list(set(vocab))
 
-    with open(args.output, 'w') as file:
+    with open('/'.join(args.data.split('/')[:-1] + [args.output]), 'w') as file:
         for x,y in sorted(vocab):
             file.write(' '.join([x, y]) + '\n')
