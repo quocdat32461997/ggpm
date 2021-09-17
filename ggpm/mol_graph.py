@@ -24,19 +24,29 @@ class MolGraph(object):
     def find_clusters(self):
         mol = self.mol
         n_atoms = mol.GetNumAtoms()
+
         if n_atoms == 1:  # special case
             return [(0,)], [[0]]
 
+        # find cluster of atoms that
+        # atoms in clusters are disjointed from the graph.
+        # AKA not in ring-bonds. In graph, ring bonds could be removed w/
+        # breaking the graph into 2 pieces
         clusters = []
         for bond in mol.GetBonds():
             a1 = bond.GetBeginAtom().GetIdx()
             a2 = bond.GetEndAtom().GetIdx()
+
             if not bond.IsInRing():
                 clusters.append((a1, a2))
 
+        # find a smallest set of smallest rings (SSSR)
+        # after removing non-ring bonds, we have multi rings (cycles) in the graph.
+        # The smallest rings are only valid clusters of atoms/vertices in a graph.
         ssr = [tuple(x) for x in Chem.GetSymmSSSR(mol)]
         clusters.extend(ssr)
 
+        # bring cluster with root to the front
         if 0 not in clusters[0]:  # root is not node[0]
             for i, cls in enumerate(clusters):
                 if 0 in cls:
@@ -44,11 +54,11 @@ class MolGraph(object):
                     # clusters[i], clusters[0] = clusters[0], clusters[i]
                     break
 
+        # atom_cls: locations of clusters in which each atom is present.
         atom_cls = [[] for i in range(n_atoms)]
         for i in range(len(clusters)):
             for atom in clusters[i]:
                 atom_cls[atom].append(i)
-
         return clusters, atom_cls
 
     def tree_decomp(self):

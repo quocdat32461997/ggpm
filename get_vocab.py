@@ -10,9 +10,14 @@ def process(data):
     vocab = set()
     for line, i in zip(data, range(len(data))):
         try:
-            #if i == 2:
-            #    continue
+            # trim space
             s = line.strip("\r\n ")
+
+            # skip smiles if containing *
+            if '*' in s:
+                continue
+
+            # extract fragment vocabs
             hmol = MolGraph(s)
             for node,attr in hmol.mol_tree.nodes(data=True):
                 smiles = attr['smiles']
@@ -46,7 +51,7 @@ if __name__ == "__main__":
     data = data.reset_index(drop=True)
     data.to_csv('/'.join(args.data.split('/')[:-1] + ['cleaned_data.csv']))
 
-    # parase into batches for parallel programming
+    # parse into batches for parallel programming
     data = list(data['SMILES'])
     batch_size = len(data) // args.ncpu + 1
     batches = [data[i : i + batch_size] for i in range(0, len(data), batch_size)]
