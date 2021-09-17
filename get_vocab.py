@@ -61,6 +61,6 @@ if __name__ == "__main__":
     vocab = [(x,y) for vocab in vocab_list for x,y in vocab]
     vocab = list(set(vocab))
 
-    with open('/'.join(args.data.split('/')[:-1] + [args.output]), 'w') as file:
+    with open(args.output, 'w') as file:
         for x,y in sorted(vocab):
             file.write(' '.join([x, y]) + '\n')
