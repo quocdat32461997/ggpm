@@ -41,6 +41,46 @@ def is_aromatic_ring(mol):
         return False
 
 
+def find_fragments(mol):
+    new_mol = Chem.RWMol(mol)
+    for atom in new_mol.GetAtoms():
+        atom.SetAtomMapNum(atom.GetIdx())
+
+    for bond in mol.GetBonds():
+        if bond.IsInRing(): continue
+        a1 = bond.GetBeginAtom()
+        a2 = bond.GetEndAtom()
+
+        if a1.IsInRing() and a2.IsInRing():
+            new_mol.RemoveBond(a1.GetIdx(), a2.GetIdx())
+
+        elif a1.IsInRing() and a2.GetDegree() > 1:
+            new_idx = new_mol.AddAtom(copy_atom(a1))
+            new_mol.GetAtomWithIdx(new_idx).SetAtomMapNum(a1.GetIdx())
+            new_mol.AddBond(new_idx, a2.GetIdx(), bond.GetBondType())
+            new_mol.RemoveBond(a1.GetIdx(), a2.GetIdx())
+
+        elif a2.IsInRing() and a1.GetDegree() > 1:
+            new_idx = new_mol.AddAtom(copy_atom(a2))
+            new_mol.GetAtomWithIdx(new_idx).SetAtomMapNum(a2.GetIdx())
+            new_mol.AddBond(new_idx, a1.GetIdx(), bond.GetBondType())
+            new_mol.RemoveBond(a1.GetIdx(), a2.GetIdx())
+
+    new_mol = new_mol.GetMol()
+    new_smiles = Chem.MolToSmiles(new_mol)
+
+    hopts = []
+    for fragment in new_smiles.split('.'):
+        fmol = Chem.MolFromSmiles(fragment)
+        indices = set([atom.GetAtomMapNum() for atom in fmol.GetAtoms()])
+        fmol = get_clique_mol(mol, indices)
+        fmol = sanitize(fmol, kekulize=False)
+        fsmiles = Chem.MolToSmiles(fmol)
+        hopts.append((fsmiles, indices))
+
+    return hopts
+
+
 def get_leaves(mol):
     leaf_atoms = [atom.GetIdx() for atom in mol.GetAtoms() if atom.GetDegree() == 1]
 
@@ -153,7 +193,7 @@ def get_assm_cands(mol, atoms, inter_label, cluster, inter_size):
     return cands
 
 
-def get_inter_label(mol, atoms, inter_atoms):
+def get_inter_label(mol, atoms, inter_atoms, atom_cls):
     new_mol = get_clique_mol(mol, atoms)
     if new_mol.GetNumBonds() == 0:
         inter_atom = list(inter_atoms)[0]
@@ -168,7 +208,14 @@ def get_inter_label(mol, atoms, inter_atoms):
             inter_label.append((idx, get_anchor_smiles(new_mol, idx)))
 
     for a in new_mol.GetAtoms():
-        a.SetAtomMapNum(1 if idxfunc(a) in inter_atoms else 0)
+        idx = idxfunc(a)
+        if idx in inter_atoms:
+            a.SetAtomMapNum(1)
+        elif len(atom_cls[idx]) > 1:
+            a.SetAtomMapNum(2)
+        else:
+            a.SetAtomMapNum(0)
+
     return new_mol, inter_label
 
 

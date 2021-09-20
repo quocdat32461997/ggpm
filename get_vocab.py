@@ -1,8 +1,9 @@
-import sys
 import argparse
 import pandas as pd
+from collections import Counter
 from rdkit import Chem
 from multiprocessing import Pool
+from ggpm import *
 
 from ggpm import MolGraph
 
@@ -25,14 +26,34 @@ def process(data):
                 for i,s in attr['inter_label']:
                     vocab.add((smiles, s))
         except Exception as e:
-            print("Error at molecule {}".format(i))
+            print('Error at line {}: {}'.format(i, e))
     return vocab
+
+def fragment_process(data):
+    counter = Counter()
+    for smiles, i in zip(data, range(len(data))):
+        try:
+            # trim space
+            smiles = smiles.strip("\r\n ")
+
+            # skip smiles if containing *
+            if '*' in smiles:
+                continue
+
+            mol = get_mol(smiles)
+            fragments = find_fragments(mol)
+            for fsmiles, _ in fragments:
+                counter[fsmiles] += 1
+        except Exception as e:
+            print('Error at lin {}: {}'.format(i, e))
+    return counter
 
 if __name__ == "__main__":
     # get arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str)
     parser.add_argument('--output', type=str, default='vocab.txt')
+    parser.add_argument('--min_frequency', type=int, default=100)
     parser.add_argument('--ncpu', type=int, default=1)
     args = parser.parse_args()
 
@@ -56,11 +77,35 @@ if __name__ == "__main__":
     batch_size = len(data) // args.ncpu + 1
     batches = [data[i : i + batch_size] for i in range(0, len(data), batch_size)]
 
-    pool = Pool(args.ncpu)
-    vocab_list = pool.map(process, batches)
-    vocab = [(x,y) for vocab in vocab_list for x,y in vocab]
+    counter = Counter()
+    if args.ncpu == 1:
+        # iterative process
+        # get fragments
+        counter = fragment_process((batches[0]))
+        # get vocabs
+        vocab = [(x, y) for x, y in process(batches[0])]
+    else:
+        # pool process
+        pool = Pool(args.ncpu)
+
+        # get fragments
+        counter_list = pool.map(fragment_process, batches)
+        for cc in counter_list:
+            print(cc)
+            counter += cc
+        # get vocabs
+        vocab_list = pool.map(process, batches)
+        vocab = [(x, y) for vocab in vocab_list for x, y in vocab]
+
+    # get fragments satisfying min_frequency
+    fragments = [fragment for fragment, cnt in counter.most_common() if cnt >= args.min_frequency]
+    MolGraph.load_fragments(fragments)
+
+    # unique set of vocab and fragments
     vocab = list(set(vocab))
+    fragments = set(fragments)
 
     with open(args.output, 'w') as file:
         for x,y in sorted(vocab):
-            file.write(' '.join([x, y]) + '\n')
+            cx = Chem.MolToSmiles(Chem.MolFromSmiles(x))
+            file.write(' '.join([x, y, str(cx in fragments)]) + '\n')

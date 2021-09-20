@@ -92,3 +92,4 @@ def hier_topk(cls_scores, icls_scores, vocab, topk):
     cls_topk = cls_topk[batch_index, topk_index]
     icls_topk = icls_topk[batch_index, topk_index]
     return topk_scores, cls_topk.tolist(), icls_topk.tolist()
+

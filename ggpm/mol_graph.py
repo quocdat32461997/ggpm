@@ -1,38 +1,45 @@
 import torch
+import rdkit
 import rdkit.Chem as Chem
 import networkx as nx
 from ggpm.chemutils import *
 from ggpm.nnutils import *
 
 add = lambda x, y: x + y if type(x) is int else (x[0] + y, x[1] + y)
+add_none = lambda x, y: None if x is None else x + y
 
 
 class MolGraph(object):
     BOND_LIST = [Chem.rdchem.BondType.SINGLE, Chem.rdchem.BondType.DOUBLE, Chem.rdchem.BondType.TRIPLE,
                  Chem.rdchem.BondType.AROMATIC]
     MAX_POS = 20
+    FRAGMENTS = []
+
+    @staticmethod
+    def load_fragments(fragments):
+        fragments = [Chem.MolToSmiles(Chem.MolFromSmiles(x)) for x in fragments]
+        MolGraph.FRAGMENTS = set(fragments)
 
     def __init__(self, smiles):
         self.smiles = smiles
         self.mol = get_mol(smiles)
 
         self.mol_graph = self.build_mol_graph()
-        self.clusters, self.atom_cls = self.find_clusters()
+        self.clusters = self.find_clusters()
+        self.clusters, self.atom_cls = self.pool_clusters()
         self.mol_tree = self.tree_decomp()
         self.order = self.label_tree()
 
     def find_clusters(self):
         mol = self.mol
         n_atoms = mol.GetNumAtoms()
-
         if n_atoms == 1:  # special case
             return [(0,)], [[0]]
 
-        # find cluster of atoms that
-        # atoms in clusters are disjointed from the graph.
-        # AKA not in ring-bonds. In graph, ring bonds could be removed w/
-        # breaking the graph into 2 pieces
         clusters = []
+        # find cluster of atoms that atoms in clusters are disjointed from the graph.
+        # atoms in clusters are disjointed from the graph.
+        # breaking the graph into 2 pieces
         for bond in mol.GetBonds():
             a1 = bond.GetBeginAtom().GetIdx()
             a2 = bond.GetEndAtom().GetIdx()
@@ -45,39 +52,21 @@ class MolGraph(object):
         # The smallest rings are only valid clusters of atoms/vertices in a graph.
         ssr = [tuple(x) for x in Chem.GetSymmSSSR(mol)]
         clusters.extend(ssr)
-
-        # bring cluster with root to the front
-        if 0 not in clusters[0]:  # root is not node[0]
-            for i, cls in enumerate(clusters):
-                if 0 in cls:
-                    clusters = [clusters[i]] + clusters[:i] + clusters[i + 1:]
-                    # clusters[i], clusters[0] = clusters[0], clusters[i]
-                    break
-
-        # atom_cls: locations of clusters in which each atom is present.
-        atom_cls = [[] for i in range(n_atoms)]
-        for i in range(len(clusters)):
-            for atom in clusters[i]:
-                atom_cls[atom].append(i)
-        return clusters, atom_cls
+        return clusters
 
     def tree_decomp(self):
+        # Function to extract motifs as tree
         clusters = self.clusters
         graph = nx.empty_graph(len(clusters))
         for atom, nei_cls in enumerate(self.atom_cls):
             if len(nei_cls) <= 1: continue
-            bonds = [c for c in nei_cls if len(clusters[c]) == 2]
-            rings = [c for c in nei_cls if len(clusters[c]) > 4]  # need to change to 2
+            inter = set(self.clusters[nei_cls[0]])
+            for cid in nei_cls:
+                inter = inter & set(self.clusters[cid])
+            assert len(inter) >= 1
 
-            if len(nei_cls) > 2 and len(bonds) >= 2:
+            if len(nei_cls) > 2 and len(inter) == 1:  # two rings + one bond has problem!
                 clusters.append([atom])
-                c2 = len(clusters) - 1
-                graph.add_node(c2)
-                for c1 in nei_cls:
-                    graph.add_edge(c1, c2, weight=100)
-
-            elif len(rings) > 2:  # Bee Hives, len(nei_cls) > 2
-                clusters.append([atom])  # temporary value, need to change
                 c2 = len(clusters) - 1
                 graph.add_node(c2)
                 for c1 in nei_cls:
@@ -85,12 +74,35 @@ class MolGraph(object):
             else:
                 for i, c1 in enumerate(nei_cls):
                     for c2 in nei_cls[i + 1:]:
-                        inter = set(clusters[c1]) & set(clusters[c2])
-                        graph.add_edge(c1, c2, weight=len(inter))
+                        union = set(clusters[c1]) | set(clusters[c2])
+                        graph.add_edge(c1, c2, weight=len(union))
 
         n, m = len(graph.nodes), len(graph.edges)
         assert n - m <= 1  # must be connected
         return graph if n - m == 1 else nx.maximum_spanning_tree(graph)
+
+    def pool_clusters(self):
+        hoptions = []
+        visited = set()
+        fragments = find_fragments(self.mol)
+        for fsmiles, fatoms in fragments:
+            if fsmiles not in MolGraph.FRAGMENTS: continue
+
+            fclusters = [i for i, cls in enumerate(self.clusters) if set(cls) <= fatoms]
+            assert len(set(fclusters) & visited) == 0
+            hoptions.append(list(fatoms))
+            visited.update(fclusters)
+
+        for i, cls in enumerate(self.clusters):
+            if i not in visited:
+                hoptions.append(cls)
+
+        hoptions = sorted(hoptions, key=lambda x: min(x))  # to ensure hoptions[0] has the root node
+        atom_cls = [[] for _ in self.mol.GetAtoms()]
+        for i in range(len(hoptions)):
+            for atom in hoptions[i]:
+                atom_cls[atom].append(i)
+        return hoptions, atom_cls
 
     def label_tree(self):
         def dfs(order, pa, prev_sib, x, fa):
@@ -119,7 +131,7 @@ class MolGraph(object):
         tree = self.mol_tree
         for i, cls in enumerate(self.clusters):
             inter_atoms = set(cls) & set(self.clusters[pa[i]]) if pa[i] >= 0 else set([0])
-            cmol, inter_label = get_inter_label(mol, cls, inter_atoms)
+            cmol, inter_label = get_inter_label(mol, cls, inter_atoms, self.atom_cls)
             tree.nodes[i]['ismiles'] = ismiles = get_smiles(cmol)
             tree.nodes[i]['inter_label'] = inter_label
             tree.nodes[i]['smiles'] = smiles = get_smiles(set_atommap(cmol))
@@ -143,6 +155,7 @@ class MolGraph(object):
         return order
 
     def build_mol_graph(self):
+        # Function to extract atoms
         mol = self.mol
         graph = nx.DiGraph(Chem.rdmolops.GetAdjacencyMatrix(mol))
         for atom in mol.GetAtoms():
