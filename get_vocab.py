@@ -60,20 +60,24 @@ if __name__ == "__main__":
     # read data
     if args.data.endswith('.csv'):
         data = pd.read_csv(args.data)
+
+        # drop empty row
+        data = data.dropna(how='all', subset=['SMILES'])
+        # remove SMIELS duplicates
+        data = data.drop_duplicates(subset=['SMILES'])
+
+        # save as cleaned-data
+        data = data.reset_index(drop=True)
+        data.to_csv('/'.join(args.data.split('/')[:-1] + ['cleaned_data.csv']))
+
+        data = list(data['SMILES'])
+    elif args.data.endswith('.txt'):
+        with open(args.data) as file:
+            data = [line for line in file.read().split('\n')]
     else:
         raise TypeError('Data files must be in csv format.')
 
-    # drop empty row
-    data = data.dropna(how='all', subset=['SMILES'])
-    # remove SMIELS duplicates
-    data = data.drop_duplicates(subset=['SMILES'])
-
-    # save as cleaned-data
-    data = data.reset_index(drop=True)
-    data.to_csv('/'.join(args.data.split('/')[:-1] + ['cleaned_data.csv']))
-
     # parse into batches for parallel programming
-    data = list(data['SMILES'])
     batch_size = len(data) // args.ncpu + 1
     batches = [data[i : i + batch_size] for i in range(0, len(data), batch_size)]
 

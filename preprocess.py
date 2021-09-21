@@ -57,4 +57,3 @@ if __name__ == "__main__":
 
         with open('tensors-%d.pkl' % split_id, 'wb') as f:
             pickle.dump(sub_data, f, pickle.HIGHEST_PROTOCOL)
-

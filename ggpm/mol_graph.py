@@ -172,7 +172,9 @@ class MolGraph(object):
 
     @staticmethod
     def tensorize(mol_batch, vocab, avocab):
-        mol_batch = [MolGraph(x) for x in mol_batch]
+        mol_batch = [MolGraph(x) for x in mol_batch][:10]
+
+        # tensorize to graph
         tree_tensors, tree_batchG = MolGraph.tensorize_graph([x.mol_tree for x in mol_batch], vocab)
         graph_tensors, graph_batchG = MolGraph.tensorize_graph([x.mol_graph for x in mol_batch], avocab)
         tree_scope = tree_tensors[-1]
@@ -200,8 +202,8 @@ class MolGraph(object):
 
     @staticmethod
     def tensorize_graph(graph_batch, vocab):
-        fnode, fmess = [None], [(0, 0, 0, 0)]
-        agraph, bgraph = [[]], [[]]
+        fnode, fmess = [None], [(0, 0, 0, 0)] # nodes and edges
+        agraph, bgraph = [[]], [[]] # atoms and bonds
         scope = []
         edge_dict = {}
         all_G = []
@@ -213,11 +215,13 @@ class MolGraph(object):
             all_G.append(G)
             fnode.extend([None for v in G.nodes])
 
+            # get nodes
             for v, attr in G.nodes(data='label'):
                 G.nodes[v]['batch_id'] = bid
                 fnode[v] = vocab[attr]
                 agraph.append([])
 
+            # get edges
             for u, v, attr in G.edges(data='label'):
                 if type(attr) is tuple:
                     fmess.append((u, v, attr[0], attr[1]))
@@ -233,12 +237,12 @@ class MolGraph(object):
                 for w in G.predecessors(u):
                     if w == v: continue
                     bgraph[eid].append(edge_dict[(w, u)])
-
         fnode[0] = fnode[1]
         fnode = torch.IntTensor(fnode)
         fmess = torch.IntTensor(fmess)
         agraph = create_pad_tensor(agraph)
         bgraph = create_pad_tensor(bgraph)
+        print(fnode.shape, fmess.shape, agraph.shape, bgraph.shape)
         return (fnode, fmess, agraph, bgraph, scope), nx.union_all(all_G)
 
 
