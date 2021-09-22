@@ -11,9 +11,11 @@ from ggpm.nnutils import *
 def make_cuda(tensors):
     tree_tensors, graph_tensors = tensors
     make_tensor = lambda x: x if type(x) is torch.Tensor else torch.tensor(x)
-    tree_tensors = [make_tensor(x).cuda().long() for x in tree_tensors[:-1]] + [tree_tensors[-1]]
-    graph_tensors = [make_tensor(x).cuda().long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
-    return tensors #tree_tensors, graph_tensors
+    #tree_tensors = [make_tensor(x).cuda().long() for x in tree_tensors[:-1]] + [tree_tensors[-1]]
+    #graph_tensors = [make_tensor(x).cuda().long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
+    tree_tensors = [make_tensor(x).long() for x in tree_tensors[:-1]] + [tree_tensors[-1]]
+    graph_tensors = [make_tensor(x).long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
+    return tree_tensors, graph_tensors
 
 
 class HierVAE(nn.Module):
