@@ -46,9 +46,9 @@ print(args)
 
 vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
-args.vocab = PairVocab([(x, y) for x, y, _ in vocab])
+args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
 
-model = HierVAE(args).cuda()
+model = HierVAE(args)#.cuda()
 
 for param in model.parameters():
     if param.dim() == 1:

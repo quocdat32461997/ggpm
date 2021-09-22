@@ -22,12 +22,12 @@ class HierMPNDecoder(nn.Module):
         self.embed_size = embed_size
         self.latent_size = latent_size
         self.use_attention = attention
-        self.itensor = torch.LongTensor([]).cuda()
+        self.itensor = torch.LongTensor([])#.cuda()
 
         self.hmpn = IncHierMPNEncoder(vocab, avocab, rnn_type, embed_size, hidden_size, depthT, depthG, dropout)
         self.rnn_cell = self.hmpn.tree_encoder.rnn
         self.E_assm = self.hmpn.E_i 
-        self.E_order = torch.eye(MolGraph.MAX_POS).cuda()
+        self.E_order = torch.eye(MolGraph.MAX_POS)#.cuda()
 
         self.topoNN = nn.Sequential(
                 nn.Linear(hidden_size + latent_size, hidden_size),

@@ -37,12 +37,12 @@ class HierVAE(nn.Module):
         z_mean = W_mean(z_vecs)
         z_log_var = -torch.abs( W_var(z_vecs) )
         kl_loss = -0.5 * torch.sum(1.0 + z_log_var - z_mean * z_mean - torch.exp(z_log_var)) / batch_size
-        epsilon = torch.randn_like(z_mean).cuda()
+        epsilon = torch.randn_like(z_mean)#.cuda()
         z_vecs = z_mean + torch.exp(z_log_var / 2) * epsilon if perturb else z_mean
         return z_vecs, kl_loss
 
     def sample(self, batch_size):
-        root_vecs = torch.randn(batch_size, self.latent_size).cuda()
+        root_vecs = torch.randn(batch_size, self.latent_size)#.cuda()
         #tree_vecs = torch.randn(batch_size, self.latent_size).cuda()
         #graph_vecs = torch.randn(batch_size, self.latent_size).cuda()
         return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
