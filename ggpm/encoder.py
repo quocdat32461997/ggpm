@@ -150,6 +150,7 @@ class HierMPNEncoder(nn.Module):
         # get features of the root motif
         hroot = self.embed_root(hmess, tensors, [st for st,le in tree_tensors[-1]])
 
+        print(hatom.shape, hinter.shape, hnode.shape, hmess.shape, hroot.shape)
         return hroot, hnode, hinter, hatom
 
 class IncMPNEncoder(MPNEncoder):

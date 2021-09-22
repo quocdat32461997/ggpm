@@ -75,6 +75,7 @@ class HierVAE(nn.Module):
 
         #loss, wacc, iacc, tacc, sacc = self.decoder((root_vecs, tree_vecs, graph_vecs), graphs, tensors, orders)
         loss, wacc, iacc, tacc, sacc = self.decoder((root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
+
         return loss + beta * kl_div, kl_div.item(), wacc, iacc, tacc, sacc
 
 

@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     random.shuffle(data)
 
-    batches = [data[i : i + args.batch_size] for i in range(0, len(data), args.batch_size)]
+    batches = [data[i : i + args.batch_size] for i in range(0, len(data), args.batch_size)][:10]
     func = partial(tensorize, vocab = args.vocab)
     all_data = pool.map(func, batches)
     num_splits = len(all_data) // 1000

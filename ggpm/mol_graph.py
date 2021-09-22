@@ -172,7 +172,7 @@ class MolGraph(object):
 
     @staticmethod
     def tensorize(mol_batch, vocab, avocab):
-        mol_batch = [MolGraph(x) for x in mol_batch][:10]
+        mol_batch = [MolGraph(x) for x in mol_batch]
 
         # tensorize to graph
         tree_tensors, tree_batchG = MolGraph.tensorize_graph([x.mol_tree for x in mol_batch], vocab)
@@ -242,7 +242,7 @@ class MolGraph(object):
         fmess = torch.IntTensor(fmess)
         agraph = create_pad_tensor(agraph)
         bgraph = create_pad_tensor(bgraph)
-        print(fnode.shape, fmess.shape, agraph.shape, bgraph.shape)
+        #print(fnode.shape, fmess.shape, agraph.shape, bgraph.shape)
         return (fnode, fmess, agraph, bgraph, scope), nx.union_all(all_G)
 
 
