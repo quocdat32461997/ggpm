@@ -10,42 +10,42 @@ from ggpm import MolGraph
 def process(data):
     vocab = set()
     for line, i in zip(data, range(len(data))):
-        #try:
-        # trim space
-        s = line.strip("\r\n ")
+        try:
+            # trim space
+            s = line.strip("\r\n ")
 
-        # skip smiles if containing *
-        if '*' in s:
-            continue
+            # skip smiles if containing *
+            if '*' in s:
+                continue
 
-        # extract fragment vocabs
-        hmol = MolGraph(s)
-        for node,attr in hmol.mol_tree.nodes(data=True):
-            smiles = attr['smiles']
-            vocab.add( attr['label'] )
-            for i,s in attr['inter_label']:
-                vocab.add((smiles, s))
-        #except Exception as e:
-        #    print('Error at line {}: {}'.format(i, e))
+            # extract fragment vocabs
+            hmol = MolGraph(s)
+            for node,attr in hmol.mol_tree.nodes(data=True):
+                smiles = attr['smiles']
+                vocab.add( attr['label'] )
+                for i,s in attr['inter_label']:
+                    vocab.add((smiles, s))
+        except Exception as e:
+            print('Error at line {}: {}'.format(i, e))
     return vocab
 
 def fragment_process(data):
     counter = Counter()
     for smiles, i in zip(data, range(len(data))):
-        #try:
-        # trim space
-        smiles = smiles.strip("\r\n ")
+        try:
+            # trim space
+            smiles = smiles.strip("\r\n ")
 
-        # skip smiles if containing *
-        if '*' in smiles:
-            continue
+            # skip smiles if containing *
+            if '*' in smiles:
+                continue
 
-        mol = get_mol(smiles)
-        fragments = find_fragments(mol)
-        for fsmiles, _ in fragments:
-            counter[fsmiles] += 1
-        #except Exception as e:
-        #    print('Error at lin {}: {}'.format(i, e))
+            mol = get_mol(smiles)
+            fragments = find_fragments(mol)
+            for fsmiles, _ in fragments:
+                counter[fsmiles] += 1
+        except Exception as e:
+            print('Error at lin {}: {}'.format(i, e))
     return counter
 
 if __name__ == "__main__":
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     if args.ncpu == 1:
         # iterative process
         # get fragments
-        counter = fragment_process((batches[0]))
+        counter = fragment_process(batches[0])
         # get vocabs
         vocab = [(x, y) for x, y in process(batches[0])]
     else:
