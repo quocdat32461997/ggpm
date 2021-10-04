@@ -28,7 +28,7 @@ if __name__ == "__main__":
     parser.add_argument('--train', required=True)
     parser.add_argument('--vocab', required=True)
     parser.add_argument('--batch_size', type=int, default=20)
-    parser.add_argument('--ncpu', type=int, default=4)
+    parser.add_argument('--ncpu', type=int, default=1)
     args = parser.parse_args()
 
     with open(args.vocab) as f:
@@ -39,21 +39,35 @@ if __name__ == "__main__":
     pool = Pool(args.ncpu)
     random.seed(1)
 
-    with open(args.train) as f:
-        data = [line.strip("\r\n ").split()[0] for line in f]
+    if args.train.endswith('.csv'):
+        data = list(pd.read_csv(args.train)['SMILES'])
+    else:
+        with open(args.train) as f:
+            data = [line.strip("\r\n ").split()[0] for line in f]
 
     random.shuffle(data)
 
-    batches = [data[i : i + args.batch_size] for i in range(0, len(data), args.batch_size)][:10]
-    func = partial(tensorize, vocab = args.vocab)
-    all_data = pool.map(func, batches)
-    num_splits = len(all_data) // 1000
+    batches = [data[i : i + args.batch_size] for i in range(0, len(data), args.batch_size)]
 
-    le = (len(all_data) + num_splits - 1) // num_splits
+    if args.ncpu == 1:
+        all_data = []
+        for b in batches:
+            all_data.append(tensorize(b, args.vocab))
+    else:
+        func = partial(tensorize, vocab = args.vocab)
+        all_data = pool.map(func, batches)
 
-    for split_id in range(num_splits):
-        st = split_id * le
-        sub_data = all_data[st : st + le]
+    # split to save into small files
+    if len(all_data) < 1000:
+        with open('tensors-%d.pkl' % 0, 'wb') as f:
+            pickle.dump(all_data, f, pickle.HIGHEST_PROTOCOL)
+    else:
+        num_splits = len(all_data) // 1000
+        le = (len(all_data) + num_splits - 1) // num_splits
 
-        with open('tensors-%d.pkl' % split_id, 'wb') as f:
-            pickle.dump(sub_data, f, pickle.HIGHEST_PROTOCOL)
+        for split_id in range(num_splits):
+            st = split_id * le
+            sub_data = all_data[st : st + le]
+
+            with open('tensors-%d.pkl' % split_id, 'wb') as f:
+                pickle.dump(sub_data, f, pickle.HIGHEST_PROTOCOL)

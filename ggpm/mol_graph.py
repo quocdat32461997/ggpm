@@ -31,6 +31,7 @@ class MolGraph(object):
         self.order = self.label_tree()
 
     def find_clusters(self):
+        # Function to find clusters - each cluster is either a bond or a ring of multiple atoms
         mol = self.mol
         n_atoms = mol.GetNumAtoms()
         if n_atoms == 1:  # special case
@@ -55,16 +56,21 @@ class MolGraph(object):
         return clusters
 
     def tree_decomp(self):
-        # Function to extract motifs as tree
+        # Function to perform tree decomposition
+        # by connecting atom_cls (atom-index clusters together).
+        # Refer to tree decomposition for details
         clusters = self.clusters
         graph = nx.empty_graph(len(clusters))
         for atom, nei_cls in enumerate(self.atom_cls):
             if len(nei_cls) <= 1: continue
+
+            # find bond intersection of atom clusters
             inter = set(self.clusters[nei_cls[0]])
             for cid in nei_cls:
                 inter = inter & set(self.clusters[cid])
             assert len(inter) >= 1
 
+            # case: when all atom_cls are connected to a single common atom
             if len(nei_cls) > 2 and len(inter) == 1:  # two rings + one bond has problem!
                 clusters.append([atom])
                 c2 = len(clusters) - 1
@@ -82,12 +88,14 @@ class MolGraph(object):
         return graph if n - m == 1 else nx.maximum_spanning_tree(graph)
 
     def pool_clusters(self):
+        # find clusters and atom_cls that exist in the fragment vocab
         hoptions = []
         visited = set()
         fragments = find_fragments(self.mol)
+
+        # add clusters in each fragment
         for fsmiles, fatoms in fragments:
             if fsmiles not in MolGraph.FRAGMENTS: continue
-
             fclusters = [i for i, cls in enumerate(self.clusters) if set(cls) <= fatoms]
             assert len(set(fclusters) & visited) == 0
             hoptions.append(list(fatoms))
@@ -98,21 +106,26 @@ class MolGraph(object):
                 hoptions.append(cls)
 
         hoptions = sorted(hoptions, key=lambda x: min(x))  # to ensure hoptions[0] has the root node
+
+        # find atom_cls that is index clusters of atoms connected to an atom.
         atom_cls = [[] for _ in self.mol.GetAtoms()]
         for i in range(len(hoptions)):
             for atom in hoptions[i]:
                 atom_cls[atom].append(i)
+
         return hoptions, atom_cls
 
     def label_tree(self):
         def dfs(order, pa, prev_sib, x, fa):
+            # DFS to find children of each parent
             pa[x] = fa
             sorted_child = sorted([y for y in self.mol_tree[x] if y != fa])  # better performance with fixed order
             for idx, y in enumerate(sorted_child):
+                # mark index relation ship between parent and children
                 self.mol_tree[x][y]['label'] = 0
-                self.mol_tree[y][x]['label'] = idx + 1  # position encoding
+                self.mol_tree[y][x]['label'] = idx + 1
                 prev_sib[y] = sorted_child[:idx]
-                prev_sib[y] += [x, fa] if fa >= 0 else [x]
+                prev_sib[y] += [x, fa] if fa >= 0 else [x] # since decoded from graph, parent is also a sibling.
                 order.append((x, y, 1))
                 dfs(order, pa, prev_sib, y, x)
                 order.append((y, x, 0))
@@ -130,12 +143,15 @@ class MolGraph(object):
 
         tree = self.mol_tree
         for i, cls in enumerate(self.clusters):
+            # find intersecting atoms between child and parent's clusters
             inter_atoms = set(cls) & set(self.clusters[pa[i]]) if pa[i] >= 0 else set([0])
+            # find inter-label
             cmol, inter_label = get_inter_label(mol, cls, inter_atoms, self.atom_cls)
+
             tree.nodes[i]['ismiles'] = ismiles = get_smiles(cmol)
             tree.nodes[i]['inter_label'] = inter_label
             tree.nodes[i]['smiles'] = smiles = get_smiles(set_atommap(cmol))
-            tree.nodes[i]['label'] = (smiles, ismiles) if len(cls) > 1 else (smiles, smiles)
+            tree.nodes[i]['label'] = (smiles, ismiles) if len(cls) > 1 else (smiles, smiles) # edge's label - tuple(smiles, index-smiles)
             tree.nodes[i]['cluster'] = cls
             tree.nodes[i]['assm_cands'] = []
 
@@ -152,15 +168,19 @@ class MolGraph(object):
                             label = self.mol_graph[ch_atom][fa_atom]['label']
                             if type(label) is int:  # in case one bond is assigned multiple times
                                 self.mol_graph[ch_atom][fa_atom]['label'] = (label, child_order)
+
         return order
 
     def build_mol_graph(self):
-        # Function to extract atoms
+        # Function to build a mol in terms of graph (aka adjacency matrix)
         mol = self.mol
-        graph = nx.DiGraph(Chem.rdmolops.GetAdjacencyMatrix(mol))
+        graph = nx.DiGraph(Chem.rdmolops.GetAdjacencyMatrix(mol)) # convert mol to graph by adjacency matrix
+
+        # each node in mol graph, set atom symbol and formal charge
         for atom in mol.GetAtoms():
             graph.nodes[atom.GetIdx()]['label'] = (atom.GetSymbol(), atom.GetFormalCharge())
 
+        # for set bond-type to mol graph
         for bond in mol.GetBonds():
             a1 = bond.GetBeginAtom().GetIdx()
             a2 = bond.GetEndAtom().GetIdx()
@@ -175,8 +195,8 @@ class MolGraph(object):
         mol_batch = [MolGraph(x) for x in mol_batch]
 
         # tensorize to graph
-        tree_tensors, tree_batchG = MolGraph.tensorize_graph([x.mol_tree for x in mol_batch], vocab)
-        graph_tensors, graph_batchG = MolGraph.tensorize_graph([x.mol_graph for x in mol_batch], avocab)
+        tree_tensors, tree_batchG = MolGraph.tensorize_graph([[x.mol_tree, x] for x in mol_batch], vocab)
+        graph_tensors, graph_batchG = MolGraph.tensorize_graph([[x.mol_graph, x] for x in mol_batch], avocab)
         tree_scope = tree_tensors[-1]
         graph_scope = graph_tensors[-1]
 
@@ -202,13 +222,16 @@ class MolGraph(object):
 
     @staticmethod
     def tensorize_graph(graph_batch, vocab):
-        fnode, fmess = [None], [(0, 0, 0, 0)] # nodes and edges
-        agraph, bgraph = [[]], [[]] # atoms and bonds
+        fnode, fmess = [None], [(0, 0, 0, 0)] # nodes/fragments and edges
+        # agraph shape: node x len_edge_dict, bgraph shape of len_edge_dict x num_predecessor
+        agraph, bgraph = [[]], [[]]
         scope = []
         edge_dict = {}
         all_G = []
 
         for bid, G in enumerate(graph_batch):
+            s = G[-1]
+            G = G[0]
             offset = len(fnode)
             scope.append((offset, len(G)))
             G = nx.convert_node_labels_to_integers(G, first_label=offset)
@@ -242,7 +265,7 @@ class MolGraph(object):
         fmess = torch.IntTensor(fmess)
         agraph = create_pad_tensor(agraph)
         bgraph = create_pad_tensor(bgraph)
-        #print(fnode.shape, fmess.shape, agraph.shape, bgraph.shape)
+        print('fnode', fnode.shape, 'fmess', fmess.shape, 'agraph', agraph.shape, 'bgraph', bgraph.shape)
         return (fnode, fmess, agraph, bgraph, scope), nx.union_all(all_G)
 
 
