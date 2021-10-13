@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+is_cuda = torch.cuda.is_available()
 
 def index_select_ND(source, dim, index):
     index_size = index.size()
@@ -56,7 +57,7 @@ def zip_tensors(tup_list):
     tup_list = zip(*tup_list)
     for a in tup_list:
         if type(a[0]) is int:
-            res.append(torch.LongTensor(a).cuda())
+            res.append(torch.LongTensor(a))#.cuda())
         else:
             res.append(torch.stack(a, dim=0))
     return res
@@ -93,3 +94,10 @@ def hier_topk(cls_scores, icls_scores, vocab, topk):
     icls_topk = icls_topk[batch_index, topk_index]
     return topk_scores, cls_topk.tolist(), icls_topk.tolist()
 
+
+def to_cuda(inputs):
+    # Function to convert to cuda tensors if cuda cores exist
+    if is_cuda:
+        return inputs.cuda()
+    else:
+        return inputs

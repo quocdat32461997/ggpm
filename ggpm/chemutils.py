@@ -15,6 +15,7 @@ def set_atommap(mol, num=0):
 
 
 def get_mol(smiles):
+    # Function to convert provided SMILES string to Mol object
     mol = Chem.MolFromSmiles(smiles)
     if mol is not None: Chem.Kekulize(mol)
     return mol
@@ -51,6 +52,7 @@ def find_fragments(mol):
         a1 = bond.GetBeginAtom()
         a2 = bond.GetEndAtom()
 
+        # 2 adjacent rings. Already satisfied the motif extraction rules
         if a1.IsInRing() and a2.IsInRing():
             new_mol.RemoveBond(a1.GetIdx(), a2.GetIdx())
 
@@ -67,17 +69,20 @@ def find_fragments(mol):
             new_mol.RemoveBond(a1.GetIdx(), a2.GetIdx())
 
     new_mol = new_mol.GetMol()
-    new_smiles = Chem.MolToSmiles(new_mol)
+    new_smiles = Chem.MolToSmiles(new_mol) # periods to represent disjoint motifs
 
+    # split fragments and convert into kekulized-format
     hopts = []
     for fragment in new_smiles.split('.'):
-        fmol = Chem.MolFromSmiles(fragment)
+        fmol = Chem.MolFromSmiles(fragment) # to moll
         indices = set([atom.GetAtomMapNum() for atom in fmol.GetAtoms()])
+        #if len(indices) == 0:
+        #    print(Chem.MolToSmiles(mol))
+        #print(indices, Chem.MolToSmiles(mol))
         fmol = get_clique_mol(mol, indices)
         fmol = sanitize(fmol, kekulize=False)
         fsmiles = Chem.MolToSmiles(fmol)
         hopts.append((fsmiles, indices))
-
     return hopts
 
 
@@ -115,6 +120,7 @@ def bond_match(mol1, a1, b1, mol2, a2, b2):
 
 
 def copy_atom(atom, atommap=True):
+    # create a shallow copy of atom w/ symbol and formal charge
     new_atom = Chem.Atom(atom.GetSymbol())
     new_atom.SetFormalCharge(atom.GetFormalCharge())
     if atommap:
@@ -144,6 +150,7 @@ def get_sub_mol(mol, sub_atoms):
 
 
 def copy_edit_mol(mol):
+    # create a shallow copy of molecule
     new_mol = Chem.RWMol(Chem.MolFromSmiles(''))
     for atom in mol.GetAtoms():
         new_atom = copy_atom(atom)

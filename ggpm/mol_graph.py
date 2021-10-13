@@ -195,8 +195,8 @@ class MolGraph(object):
         mol_batch = [MolGraph(x) for x in mol_batch]
 
         # tensorize to graph
-        tree_tensors, tree_batchG = MolGraph.tensorize_graph([[x.mol_tree, x] for x in mol_batch], vocab)
-        graph_tensors, graph_batchG = MolGraph.tensorize_graph([[x.mol_graph, x] for x in mol_batch], avocab)
+        tree_tensors, tree_batchG = MolGraph.tensorize_graph([x.mol_tree for x in mol_batch], vocab)
+        graph_tensors, graph_batchG = MolGraph.tensorize_graph([x.mol_graph for x in mol_batch], avocab)
         tree_scope = tree_tensors[-1]
         graph_scope = graph_tensors[-1]
 
@@ -230,8 +230,6 @@ class MolGraph(object):
         all_G = []
 
         for bid, G in enumerate(graph_batch):
-            s = G[-1]
-            G = G[0]
             offset = len(fnode)
             scope.append((offset, len(G)))
             G = nx.convert_node_labels_to_integers(G, first_label=offset)

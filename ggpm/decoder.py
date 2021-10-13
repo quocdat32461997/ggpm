@@ -29,18 +29,21 @@ class HierMPNDecoder(nn.Module):
         self.E_assm = self.hmpn.E_i 
         self.E_order = torch.eye(MolGraph.MAX_POS)#.cuda()
 
+        # graph prediction - attachment as an atom pair between 2 attachment configs
         self.topoNN = nn.Sequential(
                 nn.Linear(hidden_size + latent_size, hidden_size),
                 nn.ReLU(),
                 nn.Dropout(dropout),
                 nn.Linear(hidden_size, 1)
         )
+        # motif prediction
         self.clsNN = nn.Sequential(
                 nn.Linear(hidden_size + latent_size, hidden_size),
                 nn.ReLU(),
                 nn.Dropout(dropout),
                 nn.Linear(hidden_size, vocab.size()[0])
         )
+        # attachment config prediction
         self.iclsNN = nn.Sequential(
                 nn.Linear(hidden_size + latent_size, hidden_size),
                 nn.ReLU(),
@@ -170,31 +173,32 @@ class HierMPNDecoder(nn.Module):
 
         htree, tree_tensors = self.init_decoder_state(tree_batch, tree_tensors, init_vecs)
         hinter = HTuple(
-            mess = self.rnn_cell.get_init_state(inter_tensors[1]),
+            mess = self.rnn_cell.get_init_state(inter_tensors[1]), # equals to zero at 1st step
             emask = self.itensor.new_zeros(inter_tensors[1].size(0))
         )
         hgraph = HTuple(
-            mess = self.rnn_cell.get_init_state(graph_tensors[1]),
+            mess = self.rnn_cell.get_init_state(graph_tensors[1]), # equals to zero at 1st step
             vmask = self.itensor.new_zeros(graph_tensors[0].size(0)),
             emask = self.itensor.new_zeros(graph_tensors[1].size(0))
         )
-        
+
+        # initialize first prediction at 1st step
         all_topo_preds, all_cls_preds, all_assm_preds = [], [], []
         new_atoms = []
         tree_scope = tree_tensors[-1]
         for i in range(batch_size):
-            root = tree_batch.nodes[ tree_scope[i][0] ]
-            clab, ilab = self.vocab[ root['label'] ]
-            all_cls_preds.append( (init_vecs[i], i, clab, ilab) ) #cluster prediction
+            root = tree_batch.nodes[ tree_scope[i][0] ] # get root node
+            clab, ilab = self.vocab[ root['label'] ] # cluster and attachment config label
+            all_cls_preds.append( (init_vecs[i], i, clab, ilab) ) #cluster prediction at root
             new_atoms.extend(root['cluster'])
 
         subgraph = self.update_graph_mask(graph_batch, new_atoms, hgraph)
         graph_tensors = self.hmpn.embed_graph(graph_tensors) + (graph_tensors[-1],) #preprocess graph tensors
 
-        maxt = max([len(x) for x in orders])
+        maxt = max([len(x) for x in orders]) # get generation steps from the largest molecule
         max_cls_size = max( [len(attr) * 2 for node,attr in tree_batch.nodes(data='cluster')] )
 
-        for t in range(maxt):
+        for t in range(maxt): # loop over max generation
             batch_list = [i for i in range(batch_size) if t < len(orders[i])]
             assert htree.emask[0].item() == 0 and hinter.emask[0].item() == 0 and hgraph.vmask[0].item() == 0 and hgraph.emask[0].item() == 0
 
@@ -426,3 +430,10 @@ class HierMPNDecoder(nn.Module):
 
         return graph_batch.get_mol()
 
+
+class MotifGenerator(torch.nn.Module):
+    def __init__(self):
+        pass
+
+    def forward(self):
+        pass
