@@ -73,10 +73,10 @@ class HierMPNEncoder(nn.Module):
             nn.Dropout(dropout)
         )
 
-        self.E_a = torch.eye(atom_size)  # .cuda() # one-hot embedding of common atoms
-        self.E_b = torch.eye(len(MolGraph.BOND_LIST))  # .cuda() # one-hot embedding of bonds
-        self.E_apos = torch.eye(MolGraph.MAX_POS)  # .cuda() # one-hot embedding of atom position encodings
-        self.E_pos = torch.eye(MolGraph.MAX_POS)  # .cuda() # one-hot embedding of position encodings
+        self.E_a = to_cuda(torch.eye(atom_size))# one-hot embedding of common atoms
+        self.E_b = to_cuda(torch.eye(len(MolGraph.BOND_LIST))) # one-hot embedding of bonds
+        self.E_apos = to_cuda(torch.eye(MolGraph.MAX_POS)) # one-hot embedding of atom position encodings
+        self.E_pos = to_cuda(torch.eye(MolGraph.MAX_POS)) # one-hot embedding of position encodings
 
         self.W_root = nn.Sequential(
             nn.Linear(hidden_size * 2, hidden_size),

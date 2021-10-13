@@ -4,6 +4,7 @@ import networkx as nx
 from ggpm.mol_graph import MolGraph
 from ggpm.chemutils import *
 from collections import defaultdict
+from ggpm.nnutils import to_cuda
 
 class IncBase(object):
 
@@ -13,7 +14,7 @@ class IncBase(object):
         self.graph.add_node(0) #make sure node is 1 index
         self.edge_dict = {None : 0} #make sure edge is 1 index
 
-        self.fnode = torch.zeros(max_nodes * batch_size, node_fdim).long().cuda()
+        self.fnode = to_cuda(torch.zeros(max_nodes * batch_size, node_fdim).long())
         self.fmess = self.fnode.new_zeros(max_edges * batch_size, edge_fdim)
         self.agraph = self.fnode.new_zeros(max_edges * batch_size, max_nb)
         self.bgraph = self.fnode.new_zeros(max_edges * batch_size, max_nb)
@@ -201,7 +202,7 @@ class IncGraph(IncBase):
         f = torch.zeros(self.avocab.size())
         symbol, charge = atom.GetSymbol(), atom.GetFormalCharge()
         f[ self.avocab[(symbol,charge)] ] = 1
-        return f.cuda()
+        return to_cuda(f)
 
     def get_mess_feature(self, atom, bond_type, nth_child):
         f1 = torch.zeros(self.avocab.size())
@@ -211,7 +212,7 @@ class IncGraph(IncBase):
         f1[ self.avocab[(symbol,charge)] ] = 1
         f2[ MolGraph.BOND_LIST.index(bond_type) ] = 1
         f3[ nth_child ] = 1
-        return torch.cat( [f1,f2,f3], dim=-1 ).cuda()
+        return to_cuda(torch.cat( [f1,f2,f3], dim=-1 ))
 
     def get_assm_cands(self, cluster, used, smiles):
         emol = get_mol(smiles)

@@ -22,12 +22,12 @@ class HierMPNDecoder(nn.Module):
         self.embed_size = embed_size
         self.latent_size = latent_size
         self.use_attention = attention
-        self.itensor = torch.LongTensor([])#.cuda()
+        self.itensor = to_cuda(torch.LongTensor([]))
 
         self.hmpn = IncHierMPNEncoder(vocab, avocab, rnn_type, embed_size, hidden_size, depthT, depthG, dropout)
         self.rnn_cell = self.hmpn.tree_encoder.rnn
         self.E_assm = self.hmpn.E_i 
-        self.E_order = torch.eye(MolGraph.MAX_POS)#.cuda()
+        self.E_order = to_cuda(torch.eye(MolGraph.MAX_POS))
 
         # graph prediction - attachment as an atom pair between 2 attachment configs
         self.topoNN = nn.Sequential(
