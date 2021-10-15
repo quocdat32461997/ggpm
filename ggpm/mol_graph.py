@@ -28,7 +28,7 @@ class MolGraph(object):
         self.clusters = self.find_clusters()
         self.clusters, self.atom_cls = self.pool_clusters()
         self.mol_tree = self.tree_decomp()
-        self.order = self.label_tree()
+        self.order = self.label_tree() # list of tuples (x, y, #) that # = 1 if parent-> child; and otherwise if # = 0
 
     def find_clusters(self):
         # Function to find clusters - each cluster is either a bond or a ring of multiple atoms

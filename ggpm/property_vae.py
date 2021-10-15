@@ -22,13 +22,32 @@ class PropertyVAE(torch.nn.Module):
         #   - dropout: float
         #       Dropout value
         super(PropertyVAE, self).__init__()
+        self.latent_size = args.latent_size
 
         # property regressor
-        self.property_regressor = PropertyRegressor(args.num_property, args.property_hiddeen_size, args.dropout)
+        #self.property_regressor = PropertyRegressor(args.num_property, args.hiddeen_size, args.dropout)
 
         # initialize encoder and decoder
-        self.encoder = MotifEncoder(args.embedding_size, args.vocab, args.dropout)
-        self.decoder = None
+        self.encoder = MotifEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.depthT, args.depthG, args.dropout)
+        self.decoder = MotifDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.latent_size, args.diterT, args.diterG, args.dropout)
+
+        # tie embedding
+        #self.encoder.tie_embedding(self.decoder.)
+
+        # guassian noise
+        self.R_mean = torch.nn.Linear(args.hidden_size, args.latent_size)
+        self.R_var = torch.nn.Linaer(args.hidden_size, args.latent_size)
+
+    def rsample(self, z_vecs, perturb=True):
+        batch_size = z_vecs.size(0)
+        z_mean = self.R_mean(z_vecs)
+        z_log_var = -1 * torch.abs(self.R_var(z_vecs))
+        kl_loss = -0.5 * torch.sum(1.0 + z_log_var - z_mean * z_mean - torch.exp(z_log_var)) / batch_size
+        epsilon = to_cuda(torch.randn_like(z_mean))
+        z_vecs = z_mean + torch.exp(z_log_var / 2) * epsilon if perturb else z_mean
+        return z_vecs, kl_loss
 
     def forward(self, tensors, orders, beta, perturb_z=True):
         # unzip tensors into tree_tensors
@@ -37,7 +56,13 @@ class PropertyVAE(torch.nn.Module):
         # encode
         root_vecs, tree_veecs, _, _ = self.encoder(tree_tensors)
 
-        return None
+        # add guassian noise
+        root_vecs, root_kl = self.rsample(root_vecs)
+        kl_div = root_kl
+
+        # decode
+        loss, wacc, iacc, tacc, sacc = self.decoder((root_vecs, root_vecs, root_vecs), tensors, orders)
+        return kl_div.items()
 
 
 class PropertyRegressor(torch.nn.Module):
