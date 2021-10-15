@@ -566,16 +566,17 @@ class MotifDecoder(torch.nn.Module):
             assm_cxt = index_select_ND(src_graph_vecs, 0, batch_idx)
         return (self.W_assm(assm_vecs) * assm_cxt).sum(dim=-1)
 
-    def enum_attach(self, hgraph, cands, icls, nth_child):
+    def enum_attach(self, cands, icls, nth_child):
         cands = self.itensor.new_tensor(cands)
+        # embed attachment configs from labels (or previous prediction)
         icls_vecs = self.itensor.new_tensor(icls * len(cands))
         icls_vecs = self.E_assm(icls_vecs)
 
+        # embed position of attachment configs
         nth_child = self.itensor.new_tensor([nth_child] * len(cands.view(-1)))
         order_vecs = self.E_order.index_select(0, nth_child)
 
-        cand_vecs = hgraph.node.index_select(0, cands.view(-1))
-        cand_vecs = torch.cat([cand_vecs, icls_vecs, order_vecs], dim=-1)
+        cand_vecs = torch.cat([icls_vecs, order_vecs], dim=-1)
         cand_vecs = self.matchNN(cand_vecs)
 
         if len(icls) == 2:
@@ -588,13 +589,13 @@ class MotifDecoder(torch.nn.Module):
         tree_tensors, graph_tensors = tensors
 
         # extract root latent vector and reshape by a Linear layer if needed
-        src_root_vecs, src_tree_vecs, _ = src_mol_vecs
+        src_root_vecs, src_tree_vecs, src_graph_vecs = src_mol_vecs
         init_vecs = src_root_vecs if self.latent_size == self.hidden_size else self.W_root(src_root_vecs)
 
         htree, tree_tensors = self.init_decoder_state(tree_batch, tree_tensors, init_vecs)
 
         #  prediction backtrace statuses, motifs
-        all_topo_preds, all_cls_preds = [], []
+        all_topo_preds, all_cls_preds, all_assm_preds = [], [], []
 
         # get motif labels of the first step OR AT ROOT
         tree_scope = tree_tensors[-1]
@@ -660,14 +661,15 @@ class MotifDecoder(torch.nn.Module):
                     nth_child = tree_batch[yid][xid]['label'] #must be yid -> xid (graph order labeling is different from tree)
                     cands = tree_batch.nodes[yid]['assm_cands']
                     icls = list(zip(*inter_label))[1]
-                    cand_vecs = self.enum_attach(hgraph, cands, icls, nth_child)
+                    cand_vecs = self.enum_attach(cands, icls, nth_child)
 
                     if len(cand_vecs) < max_cls_size:
                         pad_len = max_cls_size - len(cand_vecs)
                         cand_vecs = F.pad(cand_vecs, (0,0,0,pad_len))
 
-                    batch_idx = hgraph.emask.new_tensor( [i] * max_cls_size )
-                    all_assm_preds.append( (cand_vecs, batch_idx, 0) ) #the label is always the first of assm_cands
+                    #batch_idx = hgraph.emask.new_tensor( [i] * max_cls_size )
+                    batch_idx = torch.tensor([i] * max_cls_size, dtype = htree.emask.dtype)
+                    all_assm_preds.append((cand_vecs, batch_idx, 0)) #the label is always the first of assm_cands
 
             topo_vecs, batch_idx, topo_labels = zip_tensors(all_topo_preds)
             topo_scores = self.get_topo_score(src_tree_vecs, batch_idx, topo_vecs)
