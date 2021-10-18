@@ -261,13 +261,19 @@ class MotifEncoder(torch.nn.Module):
         # motif embedding
         self.tree_embed = torch.nn.Sequential(
             torch.nn.Embedding(vocab.size()[0], embed_size),
-            torch.nn.Dropoout(dropout)
+            torch.nn.Dropout(dropout)
         )
 
         # attachment node embedding
         self.inter_embed = torch.nn.Sequential(
             torch.nn.Embedding(vocab.size()[1], embed_size),
-            torch.nn.Dropoout(dropout)
+            torch.nn.Dropout(dropout)
+        )
+
+        # root
+        self.W_root = nn.Sequential(
+            nn.Linear(hidden_size * 2, hidden_size),
+            nn.Tanh()  # root activation is tanh
         )
 
         # one-hot attachment connectivity embedding
@@ -295,12 +301,12 @@ class MotifEncoder(torch.nn.Module):
         attachment_f = self.inter_embed(fnode[:, 1])
 
         # position encoding of attachment
-        pos_vecs = self.E_pos.index_select(0,
-                                           fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
+        pos_vecs = self.E_pos.index_select(dim=0,
+                                           index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
 
         # embed message
-        mess_f = attachment_f.index_select(index=fmess[:, 0])
-        mess_f = torch.cat([mess_f, pos_vecs], axis=0)
+        mess_f = attachment_f.index_select(dim=0, index=fmess[:, 0])
+        mess_f = torch.cat([mess_f, pos_vecs], axis=-1)
 
         return node_f, mess_f, agraph, bgraph
 
@@ -362,7 +368,7 @@ class IncEncoder(MotifEncoder):
         node_f = self.tree_embed(fnode[:, 0])
 
         # embed attachment
-        attachment_f = self.inter_embed(fnoode[:, 1])
+        attachment_f = self.inter_embed(fnode[:, 1])
 
         if len(submess) == 0: # if no parent-child pair
             mess_f = fmess
@@ -375,7 +381,7 @@ class IncEncoder(MotifEncoder):
 
         return node_f, mess_f, agraph, bgraph
 
-    def forward(self, tree_tensors, inter_tensors, htree, subtree):
+    def forward(self, tree_tensors, htree, subtree):
         num_tree_nodes = tree_tensors[0].size(0)
 
         if len(subtree[0]) + len(subtree[1]) > 0: # either at least a leaf node or a pair of parent-child
