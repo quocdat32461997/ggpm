@@ -108,7 +108,10 @@ if __name__ == "__main__":
     vocab = list(set(vocab))
     fragments = set(fragments)
 
+    # write vocabs
+    content = []
+    for x,y in sorted(vocab):
+        cx = Chem.MolToSmiles(Chem.MolFromSmiles(x))
+        content.append(' '.join([x, y, str(cx in fragments)]))
     with open(args.output, 'w') as file:
-        for x,y in sorted(vocab):
-            cx = Chem.MolToSmiles(Chem.MolFromSmiles(x))
-            file.write(' '.join([x, y, str(cx in fragments)]) + '\n')
+        file.write('\n'.join(content))

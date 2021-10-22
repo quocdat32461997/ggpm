@@ -122,6 +122,7 @@ CO [OH:1][CH3:2] False
 C[SiH3] C[SiH3:1] False
 C[SiH3] [CH3:1][SiH3:2] False
 C[SiH3] [SiH3:1][CH3:2] False
+C[SiH3] [SiH3:1][CH3:2] False
 C[SiH3] [SiH3][CH3:1] False
 N N False
 [SiH4] [SiH4] False
