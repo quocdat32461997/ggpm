@@ -476,7 +476,7 @@ class MotifDecoder(torch.nn.Module):
             nn.Linear(hidden_size, vocab.size()[1])
         )
         self.matchNN = nn.Sequential(
-            nn.Linear(hidden_size + embed_size + MolGraph.MAX_POS, hidden_size),
+            nn.Linear(hidden_size + MolGraph.MAX_POS, hidden_size),
             nn.ReLU(),
         )
         self.W_assm = nn.Linear(hidden_size, latent_size)

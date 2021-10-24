@@ -263,7 +263,6 @@ class MolGraph(object):
         fmess = torch.IntTensor(fmess)
         agraph = create_pad_tensor(agraph)
         bgraph = create_pad_tensor(bgraph)
-        print('fnode', fnode.shape, 'fmess', fmess.shape, 'agraph', agraph.shape, 'bgraph', bgraph.shape)
         return (fnode, fmess, agraph, bgraph, scope), nx.union_all(all_G)
 
 
