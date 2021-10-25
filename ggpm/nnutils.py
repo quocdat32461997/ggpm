@@ -4,6 +4,10 @@ import torch.nn.functional as F
 
 is_cuda = torch.cuda.is_available()
 
+
+def copy_encoder(tbc_model, tc_model, model_state):
+    return tbc_model
+
 def index_select_ND(source, dim, index):
     index_size = index.size()
     suffix_dim = source.size()[1:]

@@ -259,13 +259,13 @@ class MotifEncoder(torch.nn.Module):
         self.bond_size = bond_size = len(MolGraph.BOND_LIST) + MolGraph.MAX_POS
 
         # motif embedding
-        self.tree_embed = torch.nn.Sequential(
+        self.E_c = torch.nn.Sequential(
             torch.nn.Embedding(vocab.size()[0], embed_size),
             torch.nn.Dropout(dropout)
         )
 
         # attachment node embedding
-        self.inter_embed = torch.nn.Sequential(
+        self.E_i = torch.nn.Sequential(
             torch.nn.Embedding(vocab.size()[1], embed_size),
             torch.nn.Dropout(dropout)
         )
@@ -288,17 +288,17 @@ class MotifEncoder(torch.nn.Module):
                                        dropout)
 
     def tie_embedding(self, other):
-        self.tree_embed, self.inter_embed = other.motif_embed, other.inter_embed
+        self.E_c, self.E_i = other.E_c, other.E_i
 
     def embed_tree(self, tree_tensors):
         # Function to embed motif and attachment
         fnode, fmess, agraph, bgraph, cgraph, _ = tree_tensors
 
         # embed motif
-        node_f = self.tree_embed(fnode[:, 0])
+        node_f = self.E_c(fnode[:, 0])
 
         # embed attachment
-        attachment_f = self.inter_embed(fnode[:, 1])
+        attachment_f = self.E_i(fnode[:, 1])
 
         # position encoding of attachment
         pos_vecs = self.E_pos.index_select(dim=0,
@@ -365,10 +365,10 @@ class IncEncoder(MotifEncoder):
         fnode, fmess, agraph, bgraph, cgraph, _ = self.get_sub_tensor(tree_tensors, subtree)
 
         # embed motif
-        node_f = self.tree_embed(fnode[:, 0])
+        node_f = self.E_c(fnode[:, 0])
 
         # embed attachment
-        attachment_f = self.inter_embed(fnode[:, 1])
+        attachment_f = self.E_i(fnode[:, 1])
 
         if len(submess) == 0: # if no parent-child pair
             mess_f = fmess

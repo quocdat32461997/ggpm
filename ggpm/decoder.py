@@ -451,7 +451,7 @@ class MotifDecoder(torch.nn.Module):
 
         self.hmpn = IncEncoder(vocab, avocab, rnn_type, embed_size, hidden_size, depthT, depthG, dropout)
         self.rnn_cell = self.hmpn.tree_encoder.rnn
-        self.E_assm = self.hmpn.inter_embed
+        self.E_assm = self.hmpn.E_i
         self.E_order = to_cuda(torch.eye(MolGraph.MAX_POS))
 
         # graph prediction - attachment as an atom pair between 2 attachment configs

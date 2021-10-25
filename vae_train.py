@@ -40,6 +40,7 @@ parser.add_argument('--epoch', type=int, default=20)
 parser.add_argument('--anneal_rate', type=float, default=0.9)
 parser.add_argument('--print_iter', type=int, default=50)
 parser.add_argument('--save_iter', type=int, default=-1)
+parser.add_argument('--saved_model', type=str, default=None)
 
 args = parser.parse_args()
 print(args)
@@ -48,7 +49,12 @@ vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
 
+# load model
 model = to_cuda(PropertyVAE(args))
+# load saved encoder only
+if args.saved_model:
+    model_state, _, _, beta = torch.load(args.saved_model)
+    model = copy_encoder(model, HierVAE(args), model_state)
 
 for param in model.parameters():
     if param.dim() == 1:
