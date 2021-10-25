@@ -53,8 +53,8 @@ args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
 model = to_cuda(PropertyVAE(args))
 # load saved encoder only
 if args.saved_model:
-    model_state, _, _, beta = torch.load(args.saved_model)
-    model = copy_encoder(model, HierVAE(args), model_state)
+    model = copy_encoder(model, HierVAE(args), args.saved_model)
+    print('Successfully copied encoder weights.')
 
 for param in model.parameters():
     if param.dim() == 1:

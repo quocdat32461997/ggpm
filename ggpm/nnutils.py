@@ -3,9 +3,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 is_cuda = torch.cuda.is_available()
+device = torch.device('gpu') if is_cuda else torch.device('cpu')
 
 
-def copy_encoder(tbc_model, tc_model, model_state):
+def copy_encoder(tbc_model, tc_model, path):
+    # load tc_model
+    tc_model.load_state_dict(torch.load(path, map_location=device))
+    tc_model_dict = tc_model.encoder.state_dict()
+
+    # filter pretrained dict
+    model_dict = tbc_model.encoder.state_dict()
+    tc_model_dict = {k: v for k,v in tc_model_dict.items() if
+                     (k in model_dict) and (model_dict[k].shape == tc_model_dict[k].shape)}
+
+    # load model dict
+    #model_dict.update(tc_model_dict)
+    tbc_model.encoder.load_state_dict(tc_model_dict)
+
     return tbc_model
 
 def index_select_ND(source, dim, index):
