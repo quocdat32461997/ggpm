@@ -9,17 +9,13 @@ from ggpm import MolGraph
 
 def process(data):
     vocab = set()
-    for line, i in zip(data, range(len(data))):
+    for line in data:
         #try:
         # trim space
-        s = line.strip("\r\n ")
-
-        # skip smiles if containing *
-        if '*' in s:
-            continue
+        line = line.strip("\r\n ")
 
         # extract fragment vocabs
-        hmol = MolGraph(s)
+        hmol = MolGraph(line)
         for node,attr in hmol.mol_tree.nodes(data=True):
             smiles = attr['smiles']
             vocab.add( attr['label'] )
@@ -31,15 +27,8 @@ def process(data):
 
 def fragment_process(data):
     counter = Counter()
-    for smiles, i in zip(data, range(len(data))):
+    for smiles in data:
         #try:
-        # trim space
-        smiles = smiles.strip("\r\n ")
-
-        # skip smiles if containing *
-        if '*' in smiles:
-            continue
-
         mol = get_mol(smiles)
         fragments = find_fragments(mol)
         for fsmiles, _ in fragments:
@@ -81,11 +70,15 @@ if __name__ == "__main__":
     batch_size = len(data) // args.ncpu + 1
     batches = [data[i : i + batch_size] for i in range(0, len(data), batch_size)]
 
-    counter = Counter()
     if args.ncpu == 1:
         # iterative process
         # get fragments
         counter = fragment_process(batches[0])
+
+        # get fragments satisfying min_frequency
+        fragments = [fragment for fragment, cnt in counter.most_common() if cnt >= args.min_frequency]
+        MolGraph.load_fragments(fragments)
+
         # get vocabs
         vocab = [(x, y) for x, y in process(batches[0])]
     else:
@@ -93,16 +86,21 @@ if __name__ == "__main__":
         pool = Pool(args.ncpu)
 
         # get fragments
+        counter = Counter()
         counter_list = pool.map(fragment_process, batches)
         for cc in counter_list:
             counter += cc
+
+        # get fragments satisfying min_frequency
+        fragments = [fragment for fragment, cnt in counter.most_common() if cnt >= args.min_frequency]
+        MolGraph.load_fragments(fragments)
+
+        # pool process
+        pool = Pool(args.ncpu)
+
         # get vocabs
         vocab_list = pool.map(process, batches)
         vocab = [(x, y) for vocab in vocab_list for x, y in vocab]
-
-    # get fragments satisfying min_frequency
-    fragments = [fragment for fragment, cnt in counter.most_common() if cnt >= args.min_frequency]
-    MolGraph.load_fragments(fragments)
 
     # unique set of vocab and fragments
     vocab = list(set(vocab))
