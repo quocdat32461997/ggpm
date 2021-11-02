@@ -1,4 +1,4 @@
-smiles,homo,lumo
+SMILES,HOMO,LUMO
 Cc1ccc(-c2c3cc(-c4ccc(-c5sc(-c6cccs6)c6cc(S(C)(=O)=O)sc65)s4)sc3c(-c3ccc(C)s3)c3ccsc32)s1,-0.187,-0.099
 CN1c2ccccc2C(=C2c3ccc(-c4cccs4)cc3N(C)C2=O)C1=O,-0.205,-0.111
 Cc1cc(-c2cc3c4nsnc4c(-c4cc(C)c(-c5cccs5)s4)cc3c3nsnc32)sc1-c1cccs1,-0.19,-0.114
