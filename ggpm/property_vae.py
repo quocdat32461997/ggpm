@@ -8,8 +8,8 @@ from ggpm.nnutils import *
 def make_cuda(tensors):
     tree_tensors, graph_tensors = tensors
     make_tensor = lambda x: to_cuda(x if type(x) is torch.Tensor else torch.tensor(x))
-    tree_tensors = [make_tensor(x).long() for x in tree_tensors[:-1]] + [tree_tensors[-1]]
-    graph_tensors = [make_tensor(x).long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
+    tree_tensors = [to_cuda(make_tensor(x)).long() for x in tree_tensors[:-1]] + [tree_tensors[-1]]
+    graph_tensors = [to_cuda(make_tensor(x)).long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
     return tree_tensors, graph_tensors
 
 

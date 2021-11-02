@@ -132,3 +132,4 @@ dmypy.json
 **/.idea
 **/*.pkl
 **/ckpt/model*
+**/data/qm9/files

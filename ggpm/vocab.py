@@ -3,6 +3,8 @@ import rdkit.Chem as Chem
 import copy
 import torch
 
+from ggpm.nnutils import to_cuda
+
 
 class Vocab(object):
 
@@ -37,7 +39,7 @@ class PairVocab(object):
             idx = self.vmap[(h, s)]
             self.mask[hid, idx] = 1000.0
 
-        if cuda: self.mask = self.mask.cuda()
+        if cuda: self.mask = to_cuda(self.mask)
         self.mask = self.mask - 1000.0
 
     def __getitem__(self, x):

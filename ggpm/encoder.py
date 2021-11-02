@@ -277,7 +277,7 @@ class MotifEncoder(torch.nn.Module):
         )
 
         # one-hot attachment connectivity embedding
-        self.E_pos = torch.eye(MolGraph.MAX_POS)
+        self.E_pos = to_cuda(torch.eye(MolGraph.MAX_POS))
 
         # motif layer
         self.tree_encoder = MPNEncoder(rnn_type,

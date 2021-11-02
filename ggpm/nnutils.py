@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 is_cuda = torch.cuda.is_available()
-device = torch.device('gpu') if is_cuda else torch.device('cpu')
+device = torch.device('cuda:1') if is_cuda else torch.device('cpu')
 
 
 def copy_encoder(tbc_model, tc_model, path):
@@ -116,6 +116,6 @@ def hier_topk(cls_scores, icls_scores, vocab, topk):
 def to_cuda(inputs):
     # Function to convert to cuda tensors if cuda cores exist
     if is_cuda:
-        return inputs.cuda()
+        return inputs.to(device)
     else:
         return inputs

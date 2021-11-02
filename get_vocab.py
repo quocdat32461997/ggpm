@@ -7,6 +7,7 @@ from ggpm import *
 
 from ggpm import MolGraph
 
+
 def process(data):
     vocab = set()
     for line in data:
@@ -25,6 +26,7 @@ def process(data):
         #    print('Error at line {}: {}'.format(i, e))
     return vocab
 
+
 def fragment_process(data):
     counter = Counter()
     for smiles in data:
@@ -36,6 +38,7 @@ def fragment_process(data):
         #except Exception as e:
         #    print('Error at lin {}: {}'.format(i, e))
     return counter
+
 
 if __name__ == "__main__":
     # get arguments
