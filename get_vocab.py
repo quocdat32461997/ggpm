@@ -10,33 +10,33 @@ from ggpm import MolGraph
 
 def process(data):
     vocab = set()
-    for line in data:
-        #try:
-        # trim space
-        line = line.strip("\r\n ")
+    for i, line in enumerate(data):
+        try:
+            # trim space
+            line = line.strip("\r\n ")
 
-        # extract fragment vocabs
-        hmol = MolGraph(line)
-        for node,attr in hmol.mol_tree.nodes(data=True):
-            smiles = attr['smiles']
-            vocab.add( attr['label'] )
-            for i,s in attr['inter_label']:
-                vocab.add((smiles, s))
-        #except Exception as e:
-        #    print('Error at line {}: {}'.format(i, e))
+            # extract fragment vocabs
+            hmol = MolGraph(line)
+            for node,attr in hmol.mol_tree.nodes(data=True):
+                smiles = attr['smiles']
+                vocab.add( attr['label'] )
+                for i,s in attr['inter_label']:
+                    vocab.add((smiles, s))
+        except Exception as e:
+            print('Error at line {}: {}'.format(line, i))
     return vocab
 
 
 def fragment_process(data):
     counter = Counter()
     for smiles in data:
-        #try:
-        mol = get_mol(smiles)
-        fragments = find_fragments(mol)
-        for fsmiles, _ in fragments:
-            counter[fsmiles] += 1
-        #except Exception as e:
-        #    print('Error at lin {}: {}'.format(i, e))
+        try:
+            mol = get_mol(smiles)
+            fragments = find_fragments(mol)
+            for fsmiles, _ in fragments:
+                counter[fsmiles] += 1
+        except Exception as e:
+            print('Error at line {}: {}'.format(smiles, e))
     return counter
 
 
@@ -60,7 +60,6 @@ if __name__ == "__main__":
 
         # save as cleaned-data
         data = data.reset_index(drop=True)
-        data.to_csv('/'.join(args.data.split('/')[:-1] + ['cleaned_data.csv']), index=False)
 
         data = list(data['SMILES'])
     elif args.data.endswith('.txt'):

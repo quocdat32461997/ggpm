@@ -29,3 +29,6 @@
 * NC1=[NH+][C-](C#N)C(=N)N1
 * CC(=O)[C-]1OC(=[NH2+])C=C1
 * CC1=CC(=O)O[C-]1C[NH3+]
+* C
+* N
+* O
