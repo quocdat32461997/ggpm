@@ -556,7 +556,7 @@ class MotifDecoder(torch.nn.Module):
             icls_scores = self.iclsNN(cls_vecs)  # no masking
         else:
             vocab_masks = self.vocab.get_mask(cls_labs)
-            icls_scores = self.iclsNN(cls_vecs) + vocab_masks  # apply mask by log(x + mask): mask=0 or -INF
+            icls_scores = self.iclsNN(cls_vecs) + to_cuda(vocab_masks)  # apply mask by log(x + mask): mask=0 or -INF
         return cls_scores, icls_scores
 
     def get_assm_score(self, src_graph_vecs, batch_idx, assm_vecs):
@@ -671,25 +671,29 @@ class MotifDecoder(torch.nn.Module):
                     batch_idx = torch.tensor([i] * max_cls_size, dtype = htree.emask.dtype)
                     all_assm_preds.append((cand_vecs, batch_idx, 0)) #the label is always the first of assm_cands
 
-            topo_vecs, batch_idx, topo_labels = zip_tensors(all_topo_preds)
-            topo_scores = self.get_topo_score(src_tree_vecs, batch_idx, topo_vecs)
-            topo_loss = self.topo_loss(topo_scores, topo_labels.float())
-            topo_acc = get_accuracy_bin(topo_scores, topo_labels)
+        topo_vecs, batch_idx, topo_labels = zip_tensors(all_topo_preds)
+        topo_scores = self.get_topo_score(src_tree_vecs, to_cuda(batch_idx), topo_vecs)
+        topo_loss = self.topo_loss(topo_scores, to_cuda(topo_labels).float())
+        topo_acc = get_accuracy_bin(topo_scores, to_cuda(topo_labels)
 
-            cls_vecs, batch_idx, cls_labs, icls_labs = zip_tensors(all_cls_preds)
-            cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, batch_idx, cls_vecs, cls_labs)
-            cls_loss = self.cls_loss(cls_scores, cls_labs) + self.icls_loss(icls_scores, icls_labs)
-            cls_acc = get_accuracy(cls_scores, cls_labs)
-            icls_acc = get_accuracy(icls_scores, icls_labs)
+        cls_vecs, batch_idx, cls_labs, icls_labs = zip_tensors(all_cls_preds)
+        cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, to_cuda(batch_idx), cls_vecs, cls_labs)
+        cls_loss = self.cls_loss(cls_scores, to_cuda(cls_labs)) + self.icls_loss(icls_scores, to_cuda(icls_labs))
+        cls_acc = get_accuracy(cls_scores, to_cuda(cls_labs))
+        icls_acc = get_accuracy(icls_scores, to_cuda(icls_labs))
 
-            if len(all_assm_preds) > 0:
-                assm_vecs, batch_idx, assm_labels = zip_tensors(all_assm_preds)
-                assm_scores = self.get_assm_score(src_graph_vecs, batch_idx, assm_vecs)
-                assm_loss = self.assm_loss(assm_scores, assm_labels)
-                assm_acc = get_accuracy_sym(assm_scores, assm_labels)
-            else:
-                assm_loss, assm_acc = 0, 1
+        if len(all_assm_preds) > 0:
+            assm_vecs, batch_idx, assm_labels = zip_tensors(all_assm_preds)
+            assm_scores = self.get_assm_score(src_graph_vecs, to_cuda(batch_idx), assm_vecs)
+            assm_loss = self.assm_loss(assm_scores, to_cuda(assm_labels))
+            assm_acc = get_accuracy_sym(assm_scores, to_cuda(assm_labels))
+        else:
+            assm_loss, assm_acc = 0, 1
 
-            loss = (topo_loss + cls_loss + assm_loss) / batch_size
-            return loss, cls_acc, icls_acc, topo_acc, assm_acc
+        loss = (topo_loss + cls_loss + assm_loss) / batch_size
+        return loss, cls_acc, icls_acc, topo_acc, assm_acc
+
+
+    def decode(self, src_mol_vecs, greedy=True, max_decode_step=100, beam=5):
+        #src_rot_vecs
         pass
