@@ -21,7 +21,11 @@ def read_and_extract(files, path_dir):
 
         # get smiles
         index = 3 + int(file[0])
-        res.append([file[index].split('\t')[0]])
+        smiles = [file[index].split('\t')[0]]
+        # skip if CNO
+        if smiles[-1] in ['C', 'N', 'O']:
+            continue
+        res.append(smiles)
 
         # get HOMO and LUMO properties
         res[-1].extend([float(x) for x in file[1].split(' ')[-1].split('\t')[6:8]])
