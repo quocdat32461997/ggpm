@@ -6,6 +6,7 @@ from ggpm.chemutils import *
 from collections import defaultdict
 from ggpm.nnutils import to_cuda
 
+
 class IncBase(object):
 
     def __init__(self, batch_size, node_fdim, edge_fdim, max_nodes=100, max_edges=200, max_nb=12):
@@ -75,6 +76,7 @@ class IncTree(IncBase):
             self.graph.nodes[i]['attached'].extend(used)
 
     def get_cluster(self, node_idx):
+        # get motif
         cluster = self.graph.nodes[node_idx]['cluster']
         edges = self.graph.nodes[node_idx]['cluster_edges']
         used = self.graph.nodes[node_idx]['attached']

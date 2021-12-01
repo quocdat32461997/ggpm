@@ -49,7 +49,7 @@ class PropertyVAE(torch.nn.Module):
         z_vecs = z_mean + torch.exp(z_log_var / 2) * epsilon if perturb else z_mean
         return z_vecs, kl_loss
 
-    def forward(self, graphs, tensors, orders, beta, perturb_z=True):
+    def forward(self, mols, graphs, tensors, orders, beta, perturb_z=True):
         # unzip tensors into tree_tensors
         tree_tensors, _ = tensors = make_cuda(tensors)
 
@@ -61,7 +61,7 @@ class PropertyVAE(torch.nn.Module):
         kl_div = root_kl
 
         # decode
-        loss, wacc, iacc, tacc, sacc = self.decoder((root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
+        loss, wacc, iacc, tacc, sacc = self.decoder(mols, (root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
         return loss + beta * kl_div, kl_div.item(), wacc, iacc, tacc, sacc
 
 
