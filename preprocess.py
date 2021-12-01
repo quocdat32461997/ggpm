@@ -11,9 +11,9 @@ from ggpm import MolGraph, common_atom_vocab, PairVocab
 
 def to_numpy(tensors):
     convert = lambda x : x.numpy() if type(x) is torch.Tensor else x
-    a,b,c = tensors
-    b = [convert(x) for x in b[0]], [convert(x) for x in b[1]]
-    return a, b, c
+    a,b,c,d = tensors
+    c = [convert(x) for x in c[0]], [convert(x) for x in c[1]]
+    return a, b, c, d
 
 def tensorize(mol_batch, vocab):
     x = MolGraph.tensorize(mol_batch, vocab, common_atom_vocab)
