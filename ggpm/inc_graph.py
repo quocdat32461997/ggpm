@@ -24,6 +24,7 @@ class IncBase(object):
         idx = len(self.graph)
         self.graph.add_node(idx)
         if feature is not None:
+            #print(len(feature), idx)
             self.fnode[idx, :len(feature)] = feature
         return idx
 

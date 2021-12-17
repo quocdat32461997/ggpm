@@ -50,7 +50,7 @@ class HierVAE(nn.Module):
         return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
 
     def reconstruct(self, batch):
-        graphs, tensors, _ = batch
+        mols, graphs, tensors, _ = batch
         tree_tensors, graph_tensors = tensors = make_cuda(tensors)
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)
 
