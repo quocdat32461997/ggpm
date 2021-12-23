@@ -30,8 +30,6 @@ if __name__ == "__main__":
     parser.add_argument('--ncpu', type=int, default=1)
     args = parser.parse_args()
 
-    if args.train.endswith('.csv'):
-        data = pd.read_csv(args.train)
     with open(args.vocab) as f:
         vocab = [x.strip("\r\n ").split() for x in f]
     MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])

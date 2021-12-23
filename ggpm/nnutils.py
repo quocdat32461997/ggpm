@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 is_cuda = torch.cuda.is_available()
-device = torch.device('cuda:6') if is_cuda else torch.device('cpu')
+device = torch.device('cuda:0') if is_cuda else torch.device('cpu')
 
 
 def copy_encoder(tbc_model, tc_model, path):

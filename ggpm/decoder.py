@@ -714,8 +714,8 @@ class MotifDecoder(torch.nn.Module):
         init_vecs = src_root_vecs if self.latent_size == self.hidden_size else self.W_root(src_root_vecs)
         batch_idx = self.itensor.new_tensor(range(batch_size))
         cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, batch_idx, init_vecs, None)
-        root_cls = cls_scores.max(dim=-1)[1]
-        icls_scores = icls_scores + self.vocab.get_mask(root_cls)
+        root_cls = cls_scores.max(dim=-1)[1].to('cpu')
+        icls_scores = icls_scores.to('cpu') + self.vocab.get_mask(root_cls)
         root_cls, root_icls = root_cls.tolist(), icls_scores.max(dim=-1)[1].tolist()
 
         # add super root node and get super-root index
@@ -794,7 +794,7 @@ class MotifDecoder(torch.nn.Module):
                 expand_idx = batch_idx.new_tensor(expand_list)
                 forward_mess = cur_mess.index_select(0, idx_in_mess)
                 cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, expand_idx, forward_mess, None)
-                scores, cls_topk, icls_topk = hier_topk(cls_scores, icls_scores, self.vocab, beam)
+                scores, cls_topk, icls_topk = hier_topk(cls_scores.to('cpu'), icls_scores.to('cpu'), self.vocab, beam)
                 if not greedy:
                     scores = torch.exp(scores)  # score is output of log softmax
                     shuf_idx = torch.multinomial(scores, beam, replacement=False).tolist()
@@ -834,7 +834,7 @@ class MotifDecoder(torch.nn.Module):
                         inter_label = list(zip(inter_label, attach_points))
                         if graph_batch.try_add_mol(bid, ismiles, inter_label):
                             #try
-                            print('batch', bid, mols[bid], 'inter-label', inter_label)
+                            #print('batch', bid, mols[bid], 'inter-label', inter_label)
                             new_atoms, new_bonds, attached = graph_batch.add_mol(bid, ismiles, inter_label, nth_child)
                             tree_batch.register_cgraph(new_node, new_atoms, new_bonds, attached)
                             tree_batch.update_attached(fa_node, inter_label)

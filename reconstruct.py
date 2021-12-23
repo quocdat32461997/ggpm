@@ -5,6 +5,7 @@ import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data import DataLoader
 
 import math, random, sys
+import pandas as pd
 import numpy as np
 import argparse
 from tqdm import tqdm
@@ -12,6 +13,8 @@ from tqdm import tqdm
 import rdkit
 from rdkit import Chem
 from ggpm import *
+
+device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
@@ -37,14 +40,19 @@ parser.add_argument('--dropout', type=float, default=0.0)
 
 args = parser.parse_args()
 
-args.test = [line.strip("\r\n ") for line in open(args.test)]
+if args.test.endswith('.csv'):
+    args.test = list(pd.read_csv(args.test)['SMILES'])
+    args.test = [line.strip("\r\n ") for line in args.test]
+else:
+    args.test = [line.strip("\r\n ") for line in open(args.test)]
 vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x,y) for x,y,_ in vocab])
 
-model = HierVAE(args).cuda()
+model = to_cuda(PropertyVAE(args))
 
-model.load_state_dict(torch.load(args.model))
+model.load_state_dict(torch.load(args.model,
+                                 map_location=device))
 model.eval()
 
 dataset = MoleculeDataset(args.test, args.vocab, args.atom_vocab, args.batch_size)

@@ -51,7 +51,7 @@ class PropertyVAE(torch.nn.Module):
 
     def reconstruct(self, batch):
         mols, graphs, tensors, _ = batch
-        tree_tensors, _ = tensors = to_cuda(tensors)
+        tree_tensors, _ = tensors = make_cuda(tensors)
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 
         root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
