@@ -24,8 +24,8 @@ class IncBase(object):
         idx = len(self.graph)
         self.graph.add_node(idx)
         if feature is not None:
-            #print(len(feature), idx)
-            self.fnode[idx, :len(feature)] = feature
+            #self.fnode[idx, :len(feature)] = feature
+            pass
         return idx
 
     def set_node_feature(self, idx, feature):
@@ -100,6 +100,7 @@ class IncGraph(IncBase):
         self.fnode = self.fnode.float()
         self.fmess = self.fmess.float()
         self.batch = defaultdict(list)
+        self.atoms = []
 
     def get_mol(self):
         mol_list = [None] * len(self.batch)
@@ -130,6 +131,10 @@ class IncGraph(IncBase):
                 attached.append(idx)
             else:
                 new_atom = copy_atom(atom)
+                a = atom.GetSymbol()
+                if a not in self.atoms:
+                    self.atoms.append(a)
+
                 new_atom.SetAtomMapNum( batch_idx ) 
                 idx = self.mol.AddAtom( new_atom )
                 assert idx == self.add_node( self.get_atom_feature(new_atom) ) #mol and nx graph must have the same indexing

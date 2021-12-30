@@ -705,8 +705,11 @@ class MotifDecoder(torch.nn.Module):
         src_root_vecs, src_tree_vecs, src_graph_vecs = src_mol_vecs
         batch_size = len(src_root_vecs)
 
-        tree_batch = IncTree(batch_size, node_fdim=2, edge_fdim=3)
-        graph_batch = IncGraph(self.avocab, batch_size, node_fdim=self.hmpn.atom_size,
+        tree_batch = IncTree(batch_size, max_nodes=400, max_edges=500,
+                             node_fdim=2, edge_fdim=3)
+        graph_batch = IncGraph(self.avocab, batch_size,
+                               max_nodes=400, max_edges=500,
+                               node_fdim=self.hmpn.atom_size,
                                edge_fdim=self.hmpn.atom_size + self.hmpn.bond_size)
         stack = [[] for i in range(batch_size)]  # stack for storing past motifs
 
