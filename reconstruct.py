@@ -24,9 +24,11 @@ parser.add_argument('--test', required=True)
 parser.add_argument('--vocab', required=True)
 parser.add_argument('--atom_vocab', default=common_atom_vocab)
 parser.add_argument('--model', required=True)
+parser.add_argument('--output', default='output.csv')
 
 parser.add_argument('--seed', type=int, default=1)
 
+parser.add_argument('--property-predict', action='store_true')
 parser.add_argument('--rnn_type', type=str, default='LSTM')
 parser.add_argument('--hidden_size', type=int, default=250)
 parser.add_argument('--embed_size', type=int, default=250)
@@ -61,11 +63,24 @@ loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate
 torch.manual_seed(args.seed)
 random.seed(args.seed)
 
-total, acc = 0, 0
+total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [], 'cls_scores': [],
+                             'icls_scores': [], 'topo_scores': [], 'assm_scores': []}
 with torch.no_grad():
     for i,batch in enumerate(loader):
         orig_smiles = args.test[args.batch_size * i : args.batch_size * (i + 1)]
-        dec_smiles = model.reconstruct(batch)
+        dec_smiles, scores = model.reconstruct(batch)
         for x, y in zip(orig_smiles, dec_smiles):
+            # display results
             print(x, y)
 
+            # add to outputs
+            outputs['original'].append(x)
+            outputs['reconstructed'].append(y)
+            outputs['cls_score'].append(scores['cls_scores'])
+            outputs['icls_scores'].aappend(scores['icls_scores'])
+            outputs['topo_scores'].append(scores['topo_scores'])
+            outputs['assm_scores'].append(scores['assm_scores'])
+
+# save outputs
+outputs = pd.DataFrame.from_dict(outputs)
+outputs.to_csv(args.output, index=False)

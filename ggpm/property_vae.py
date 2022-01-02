@@ -25,7 +25,8 @@ class PropertyVAE(torch.nn.Module):
         self.latent_size = args.latent_size
 
         # property regressor
-        #self.property_regressor = PropertyRegressor(args.num_property, args.hiddeen_size, args.dropout)
+        self.regressor = None if args.property_predict is False else \
+            PropertyRegressor(args.num_property, args.hiddeen_size, args.dropout)
 
         # initialize encoder and decoder
         self.encoder = MotifEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
@@ -40,7 +41,7 @@ class PropertyVAE(torch.nn.Module):
         self.R_mean = torch.nn.Linear(args.hidden_size, args.latent_size)
         self.R_var = torch.nn.Linear(args.hidden_size, args.latent_size)
 
-    def rsample(self, z_vecs, perturb=True):
+    def resample(self, z_vecs, perturb=True):
         batch_size = z_vecs.size(0)
         z_mean = self.R_mean(z_vecs)
         z_log_var = -1 * torch.abs(self.R_var(z_vecs))
@@ -67,7 +68,7 @@ class PropertyVAE(torch.nn.Module):
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 
         # add guassian noise
-        root_vecs, root_kl = self.rsample(root_vecs, perturb_z)
+        root_vecs, root_kl = self.resample(root_vecs, perturb_z)
         kl_div = root_kl
 
         # decode

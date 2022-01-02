@@ -21,6 +21,7 @@ parser.add_argument('--atom_vocab', default=common_atom_vocab)
 parser.add_argument('--save_dir', required=True)
 parser.add_argument('--load_epoch', type=int, default=-1)
 
+parser.add_argument('--property-predict', action='store_true')
 parser.add_argument('--rnn_type', type=str, default='LSTM')
 parser.add_argument('--hidden_size', type=int, default=250)
 parser.add_argument('--embed_size', type=int, default=250)
