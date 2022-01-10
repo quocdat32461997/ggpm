@@ -192,8 +192,12 @@ class MolGraph(object):
 
     @staticmethod
     def tensorize(mol_batch, vocab, avocab):
-        mol_batches = mol_batch
-        mol_batch = [MolGraph(x) for x in mol_batch]
+        mol_batches, homos, lumos = [], [], []
+        for idx, x in enumerate(mol_batch):
+            mol_batches.append(x[0])
+            homos.append(x[1])
+            lumos.append(x[1])
+            mol_batch[idx] = MolGraph(x[0])
 
         # tensorize to graph
         tree_tensors, tree_batchG = MolGraph.tensorize_graph([x.mol_tree for x in mol_batch], vocab)
@@ -219,7 +223,7 @@ class MolGraph(object):
             all_orders.append(order)
 
         tree_tensors = tree_tensors[:4] + (cgraph, tree_scope)
-        return mol_batches, (tree_batchG, graph_batchG), (tree_tensors, graph_tensors), all_orders
+        return mol_batches, (tree_batchG, graph_batchG), (tree_tensors, graph_tensors), all_orders, homos, lumos
 
     @staticmethod
     def tensorize_graph(graph_batch, vocab):

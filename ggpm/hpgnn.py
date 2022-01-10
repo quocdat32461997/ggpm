@@ -97,14 +97,14 @@ class HierPropVAE(nn.Module):
         return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
 
     def reconstruct(self, batch):
-        mols, graphs, tensors, _ = batch
+        mols, graphs, tensors, _, _, _ = batch
         tree_tensors, graph_tensors = tensors = make_cuda(tensors)
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)
 
         root_vecs, root_kl = self.rsample(root_vecs, self.R_mean, self.R_var, perturb=False)
         return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
 
-    def forward(self, graphs, tensors, orders, beta, perturb_z=True):
+    def forward(self, graphs, tensors, orders, beta, homos, lumos, perturb_z=True):
         tree_tensors, graph_tensors = tensors = make_cuda(tensors)
 
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)
@@ -126,7 +126,7 @@ class HierPropVAE(nn.Module):
         loss, wacc, iacc, tacc, sacc = self.decoder((root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
 
         # HOMO & LUMO predictors
-        homo_loss, lumo_loss = self.property_optim(root_vecs, None)
+        homo_loss, lumo_loss = self.property_optim(root_vecs, labels=(homos, lumos))
 
         # sum-up loss
         loss += beta * kl_div + homo_loss + lumo_loss
@@ -166,14 +166,14 @@ class HierVAE(nn.Module):
         return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
 
     def reconstruct(self, batch):
-        mols, graphs, tensors, _ = batch
+        mols, graphs, tensors, _, _, _ = batch
         tree_tensors, graph_tensors = tensors = make_cuda(tensors)
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)
 
         root_vecs, root_kl = self.rsample(root_vecs, self.R_mean, self.R_var, perturb=False)
         return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
 
-    def forward(self, graphs, tensors, orders, beta, perturb_z=True):
+    def forward(self, graphs, tensors, orders, beta, homos, lumos, perturb_z=True):
         tree_tensors, graph_tensors = tensors = make_cuda(tensors)
 
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)

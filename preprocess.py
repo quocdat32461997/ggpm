@@ -9,15 +9,18 @@ import pandas as pd
 
 from ggpm import MolGraph, common_atom_vocab, PairVocab
 
+
 def to_numpy(tensors):
     convert = lambda x : x.numpy() if type(x) is torch.Tensor else x
-    a,b,c,d = tensors
+    a,b,c,d,e,f = tensors
     c = [convert(x) for x in c[0]], [convert(x) for x in c[1]]
-    return a, b, c, d
+    return a, b, c, d, e, f
+
 
 def tensorize(mol_batch, vocab):
     x = MolGraph.tensorize(mol_batch, vocab, common_atom_vocab)
     return to_numpy(x)
+
 
 if __name__ == "__main__":
     lg = rdkit.RDLogger.logger()
@@ -42,7 +45,7 @@ if __name__ == "__main__":
         data = list(pd.read_csv(args.train)['SMILES'])
     else:
         with open(args.train) as f:
-            data = [line.strip("\r\n ").split()[0] for line in f]
+            data = [line.strip("\r\n ").split() for line in f]
 
     random.shuffle(data)
 
