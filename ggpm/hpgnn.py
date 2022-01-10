@@ -17,28 +17,49 @@ def make_cuda(tensors):
 
 
 class PropertyOptimizer(nn.Module):
-    def __init__(self, hidden_size):
+    def __init__(self, input_size, hidden_size, dropout=0.0):
         super(PropertyOptimizer, self).__init__()
-        self.homo_linear = nn.Linear(hidden_size, 1)
-        self.lumo_linear = nn.Linear(hidden_size, 1)
+        # hidden_size to list
+        hidden_size = [hidden_size] if isinstance(hidden_size, int) else hidden_size
+        hidden_size = [input_size] + hidden_size
+
+        # define homo and lumo linear head
+        self.homo_linear, self.lumo_linear = nn.ModuleList(), nn.ModuleList
+        for idx in range(len(hidden_size)+1):
+            self.homo_linear.extend([
+                nn.Linear(hidden_size[idx], hidden_size[idx+1]),
+                nn.ReLu(), nn.Dropout(dropout)])
+            self.lumo_linear.extend([
+                nn.Linear(hidden_size[idx], hidden_size[idx + 1]),
+                nn.ReLu(), nn.Dropout(dropout)])
+        self.homo_linear.append(nn.Linear(hidden_size[-1], 1))
+        self.lumo_linear.append(nn.Linear(hidden_size[-1], 1))
 
     def compute_loss(self, outputs, labels):
         return torch.nn.MSELoss()(outputs, labels)
 
     def forward(self, features, labels):
-        # extract features and labels
-        homo_features, lumo_features = features
+        # extract labels
         homo_labels, lumo_labels = labels
 
         # make predictions
-        homo_outputs = self.homo_linear(homo_features)
-        lumo_outputs = self.lumo_linear(lumo_features)
+        homo_outputs, lumo_outputs = self.predict(features)
 
         # compute loss
         homo_loss = self.compute_loss(homo_outputs, homo_labels)
         lumo_loss = self.compute_loss(lumo_outputs, lumo_labels)
 
         return homo_loss, lumo_loss
+
+    def predict(self, features):
+        # extract features
+        homo_features, lumo_features = features
+
+        # make predictions
+        homo_outputs = self.homo_linear(homo_features)
+        lumo_outputs = self.lumo_linear(lumo_features)
+
+        return homo_outputs, lumo_outputs
 
 
 class HierPropVAE(nn.Module):
@@ -48,7 +69,8 @@ class HierPropVAE(nn.Module):
                                       args.depthT, args.depthG, args.dropout)
         self.decoder = HierMPNDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
                                       args.latent_size, args.diterT, args.diterG, args.dropout)
-        self.property_optim = PropertyOptimizer(args.hidden_size / 2)
+        self.property_optim = PropertyOptimizer(input_size=args.hidden_size / 2, hidden_size=args.linear_hidden_size,
+                                                dropout=args.dropout)
         self.encoder.tie_embedding(self.decoder.hmpn)
         self.latent_size = args.latent_size
 
