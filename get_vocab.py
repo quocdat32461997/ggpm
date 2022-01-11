@@ -54,7 +54,7 @@ if __name__ == "__main__":
         data = pd.read_csv(args.data)
 
         # drop empty row
-        data = data.dropna(how='all', subset=['SMILES'])
+        data = data.dropna(subset=['SMILES'])
         # remove SMIELS duplicates
         data = data.drop_duplicates(subset=['SMILES'])
 

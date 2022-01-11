@@ -15,7 +15,6 @@ def to_numpy(tensors):
     convert = lambda x : x.numpy() if type(x) is torch.Tensor else x
     a,b,c,d,e,f = tensors
     c = [convert(x) for x in c[0]], [convert(x) for x in c[1]]
-    e, f = torch.from_numpy(np.array(e, dtype=np.float32)), torch.from_numpy(np.array(f, dtype=np.float32))
     return a, b, c, d, e, f
 
 
@@ -44,7 +43,12 @@ if __name__ == "__main__":
     random.seed(1)
 
     if args.train.endswith('.csv'):
-        data = pd.read_csv(args.train).to_numpy()
+        data = pd.read_csv(args.train) \
+        # drop row w/ emtpy HOMO and LUMO
+        data = data.dropna().reset_index(drop=True)
+        #data[['HOMO', 'LUMO']] = data[['HOMO', 'LUMO']].astype('float64')
+        data = data.to_numpy()
+        #print(data[:2, 0], data[:2, 1], data[:2, 2])
     else:
         with open(args.train) as f:
             data = [line.strip("\r\n ").split() for line in f]
