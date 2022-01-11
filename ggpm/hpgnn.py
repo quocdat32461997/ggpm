@@ -19,6 +19,7 @@ def make_cuda(tensors):
 class PropertyOptimizer(nn.Module):
     def __init__(self, input_size, hidden_size, dropout=0.0):
         super(PropertyOptimizer, self).__init__()
+        self.input_size = input_size
         # hidden_size to list
         hidden_size = [hidden_size] if isinstance(hidden_size, int) else hidden_size
         hidden_size = [input_size] + hidden_size
@@ -26,24 +27,23 @@ class PropertyOptimizer(nn.Module):
         # define homo and lumo linear head
         self.homo_linear, self.lumo_linear = nn.ModuleList(), nn.ModuleList()
         for idx in range(len(hidden_size)-1):
-            self.homo_linear.extend([
-                nn.Linear(hidden_size[idx], hidden_size[idx+1]),
+            self.homo_linear.extend([nn.Linear(hidden_size[idx], hidden_size[idx+1]),
                 nn.ReLU(), nn.Dropout(dropout)])
-            self.lumo_linear.extend([
-                nn.Linear(hidden_size[idx], hidden_size[idx + 1]),
+            self.lumo_linear.extend([nn.Linear(hidden_size[idx], hidden_size[idx + 1]),
                 nn.ReLU(), nn.Dropout(dropout)])
         self.homo_linear.append(nn.Linear(hidden_size[-1], 1))
         self.lumo_linear.append(nn.Linear(hidden_size[-1], 1))
 
     def compute_loss(self, outputs, labels):
-        return torch.nn.MSELoss()(outputs, labels)
+        # get last dim of outputs of loss-computing since each property has only 1 score
+        return torch.nn.MSELoss()(outputs[:, -1], torch.tensor(labels.tolist(), dtype=torch.float))
 
     def forward(self, features, labels):
         # extract labels
         homo_labels, lumo_labels = labels
 
         # make predictions
-        homo_outputs, lumo_outputs = self.predict(features)
+        homo_outputs, lumo_outputs = self.predict(features=features)
 
         # compute loss
         homo_loss = self.compute_loss(homo_outputs, homo_labels)
@@ -53,11 +53,13 @@ class PropertyOptimizer(nn.Module):
 
     def predict(self, features):
         # extract features
-        homo_features, lumo_features = features
+        homo_outputs = features[:, :self.input_size]
+        lumo_outputs = features[:, self.input_size:]
 
         # make predictions
-        homo_outputs = self.homo_linear(homo_features)
-        lumo_outputs = self.lumo_linear(lumo_features)
+        for hl, ll in zip(self.homo_linear, self.lumo_linear):
+            homo_outputs = hl(homo_outputs)
+            lumo_outputs = ll(lumo_outputs)
 
         return homo_outputs, lumo_outputs
 
@@ -109,6 +111,9 @@ class HierPropVAE(nn.Module):
 
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)
 
+        # HOMO & LUMO predictors
+        homo_loss, lumo_loss = self.property_optim(root_vecs, labels=(homos, lumos))
+
         # graph_vecs = stack_pad_tensor( [graph_vecs[st : st + le] for st,le in graph_tensors[-1]] )
         # size = graph_vecs.new_tensor([le for _,le in graph_tensors[-1]])
         # graph_vecs = graph_vecs.sum(dim=1) / size.unsqueeze(-1)
@@ -125,12 +130,10 @@ class HierPropVAE(nn.Module):
         # modify molecules
         loss, wacc, iacc, tacc, sacc = self.decoder((root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
 
-        # HOMO & LUMO predictors
-        homo_loss, lumo_loss = self.property_optim(root_vecs, labels=(homos, lumos))
-
         # sum-up loss
-        loss += beta * kl_div + homo_loss + lumo_loss
-        return loss, kl_div.item(), wacc, iacc, tacc, sacc
+        loss += beta * kl_div
+        total_loss = loss + homo_loss + lumo_loss
+        return total_loss, loss, kl_div.item(), homo_loss, lumo_loss, wacc, iacc, tacc, sacc
 
 
 class HierVAE(nn.Module):

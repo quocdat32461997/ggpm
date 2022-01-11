@@ -21,7 +21,6 @@ parser.add_argument('--atom_vocab', default=common_atom_vocab)
 parser.add_argument('--save_dir', required=True)
 parser.add_argument('--load_epoch', type=int, default=-1)
 
-parser.add_argument('--property-predict', action='store_true')
 parser.add_argument('--rnn_type', type=str, default='LSTM')
 parser.add_argument('--hidden_size', type=int, default=250)
 parser.add_argument('--linear-hidden-size', type=int, default=64)
@@ -52,7 +51,7 @@ MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
 
 # load model
-model = to_cuda(PropertyVAE(args))
+model = to_cuda(HierPropVAE(args))
 # load saved encoder only
 if args.saved_model:
     model = copy_encoder(model, HierVAE(args), args.saved_model)
@@ -85,7 +84,7 @@ for epoch in range(args.load_epoch + 1, args.epoch):
     for batch in dataset:
         total_step += 1
         model.zero_grad()
-        loss, kl_div, wacc, iacc, tacc, sacc = model(*batch, beta=beta)
+        total_loss, loss, kl_div, homo_loss, lumo_loss, wacc, iacc, tacc, sacc = model(*batch, beta=beta)
 
         loss.backward()
         nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm)
