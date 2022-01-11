@@ -6,6 +6,7 @@ from functools import partial
 import torch
 import rdkit
 import pandas as pd
+import numpy as np
 
 from ggpm import MolGraph, common_atom_vocab, PairVocab
 
@@ -14,6 +15,7 @@ def to_numpy(tensors):
     convert = lambda x : x.numpy() if type(x) is torch.Tensor else x
     a,b,c,d,e,f = tensors
     c = [convert(x) for x in c[0]], [convert(x) for x in c[1]]
+    e, f = torch.from_numpy(np.array(e, dtype=np.float32)), torch.from_numpy(np.array(f, dtype=np.float32))
     return a, b, c, d, e, f
 
 
