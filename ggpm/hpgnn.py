@@ -24,14 +24,14 @@ class PropertyOptimizer(nn.Module):
         hidden_size = [input_size] + hidden_size
 
         # define homo and lumo linear head
-        self.homo_linear, self.lumo_linear = nn.ModuleList(), nn.ModuleList
-        for idx in range(len(hidden_size)+1):
+        self.homo_linear, self.lumo_linear = nn.ModuleList(), nn.ModuleList()
+        for idx in range(len(hidden_size)-1):
             self.homo_linear.extend([
                 nn.Linear(hidden_size[idx], hidden_size[idx+1]),
-                nn.ReLu(), nn.Dropout(dropout)])
+                nn.ReLU(), nn.Dropout(dropout)])
             self.lumo_linear.extend([
                 nn.Linear(hidden_size[idx], hidden_size[idx + 1]),
-                nn.ReLu(), nn.Dropout(dropout)])
+                nn.ReLU(), nn.Dropout(dropout)])
         self.homo_linear.append(nn.Linear(hidden_size[-1], 1))
         self.lumo_linear.append(nn.Linear(hidden_size[-1], 1))
 
@@ -69,7 +69,7 @@ class HierPropVAE(nn.Module):
                                       args.depthT, args.depthG, args.dropout)
         self.decoder = HierMPNDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
                                       args.latent_size, args.diterT, args.diterG, args.dropout)
-        self.property_optim = PropertyOptimizer(input_size=args.hidden_size / 2, hidden_size=args.linear_hidden_size,
+        self.property_optim = PropertyOptimizer(input_size=args.hidden_size // 2, hidden_size=args.linear_hidden_size,
                                                 dropout=args.dropout)
         self.encoder.tie_embedding(self.decoder.hmpn)
         self.latent_size = args.latent_size
@@ -104,7 +104,7 @@ class HierPropVAE(nn.Module):
         root_vecs, root_kl = self.rsample(root_vecs, self.R_mean, self.R_var, perturb=False)
         return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
 
-    def forward(self, graphs, tensors, orders, beta, homos, lumos, perturb_z=True):
+    def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
         tree_tensors, graph_tensors = tensors = make_cuda(tensors)
 
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)
@@ -173,7 +173,7 @@ class HierVAE(nn.Module):
         root_vecs, root_kl = self.rsample(root_vecs, self.R_mean, self.R_var, perturb=False)
         return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
 
-    def forward(self, graphs, tensors, orders, beta, homos, lumos, perturb_z=True):
+    def forward(self, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
         tree_tensors, graph_tensors = tensors = make_cuda(tensors)
 
         root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors, graph_tensors)
