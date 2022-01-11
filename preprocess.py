@@ -42,7 +42,7 @@ if __name__ == "__main__":
     random.seed(1)
 
     if args.train.endswith('.csv'):
-        data = list(pd.read_csv(args.train)['SMILES'])
+        data = pd.read_csv(args.train).to_numpy()
     else:
         with open(args.train) as f:
             data = [line.strip("\r\n ").split() for line in f]

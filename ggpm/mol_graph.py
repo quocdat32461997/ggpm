@@ -192,20 +192,18 @@ class MolGraph(object):
 
     @staticmethod
     def tensorize(mol_batch, vocab, avocab):
-        mol_batches, homos, lumos = [], [], []
+        mol_batches = []
         for idx, x in enumerate(mol_batch):
             mol_batches.append(x[0])
-            homos.append(x[1])
-            lumos.append(x[1])
-            mol_batch[idx] = MolGraph(x[0])
+            mol_batch[idx][0] = MolGraph(x[0])
 
         # tensorize to graph
-        tree_tensors, tree_batchG = MolGraph.tensorize_graph([x.mol_tree for x in mol_batch], vocab)
-        graph_tensors, graph_batchG = MolGraph.tensorize_graph([x.mol_graph for x in mol_batch], avocab)
+        tree_tensors, tree_batchG = MolGraph.tensorize_graph([x.mol_tree for x in mol_batch[:, 0]], vocab)
+        graph_tensors, graph_batchG = MolGraph.tensorize_graph([x.mol_graph for x in mol_batch[:, 0]], avocab)
         tree_scope = tree_tensors[-1]
         graph_scope = graph_tensors[-1]
 
-        max_cls_size = max([len(c) for x in mol_batch for c in x.clusters])
+        max_cls_size = max([len(c) for x in mol_batch[:, 0] for c in x.clusters])
         cgraph = torch.zeros(len(tree_batchG) + 1, max_cls_size).int()
         for v, attr in tree_batchG.nodes(data=True):
             bid = attr['batch_id']
@@ -216,14 +214,16 @@ class MolGraph(object):
             cgraph[v, :len(cls)] = torch.IntTensor(cls)
 
         all_orders = []
-        for i, hmol in enumerate(mol_batch):
+        for i, hmol in enumerate(mol_batch[:, 0]):
             offset = tree_scope[i][0]
             order = [(x + offset, y + offset, z) for x, y, z in hmol.order[:-1]] + [
                 (hmol.order[-1][0] + offset, None, 0)]
             all_orders.append(order)
 
         tree_tensors = tree_tensors[:4] + (cgraph, tree_scope)
-        return mol_batches, (tree_batchG, graph_batchG), (tree_tensors, graph_tensors), all_orders, homos, lumos
+        return mol_batches, (tree_batchG, graph_batchG), (tree_tensors, graph_tensors), all_orders, \
+               mol_batch[:, 1], mol_batch[:, 2] # the last 2 columsn are HOMO and LUMO scores
+
 
     @staticmethod
     def tensorize_graph(graph_batch, vocab):

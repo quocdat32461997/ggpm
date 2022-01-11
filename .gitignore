@@ -134,3 +134,4 @@ dmypy.json
 **/ckpt/model*
 **/data/qm9/files
 **/ckpt
+**/*.zip
