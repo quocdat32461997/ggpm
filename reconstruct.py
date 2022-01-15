@@ -1,17 +1,10 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data import DataLoader
-
-import math, random, sys
+import moses
 import pandas as pd
-import numpy as np
 import argparse
-from tqdm import tqdm
 
 import rdkit
-from rdkit import Chem
 from ggpm import *
 
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
@@ -19,34 +12,18 @@ device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('
 lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
+# get path to config
 parser = argparse.ArgumentParser()
-parser.add_argument('--test', required=True)
-parser.add_argument('--vocab', required=True)
-parser.add_argument('--atom_vocab', default=common_atom_vocab)
-parser.add_argument('--model', required=True)
-parser.add_argument('--output', default='output.csv')
+parser.add_argument('--path-to-config', required=True)
 
-parser.add_argument('--seed', type=int, default=1)
+# get configs
+args = Configs(path=parser.parse_args().path_to_config)
 
-parser.add_argument('--property-predict', action='store_true')
-parser.add_argument('--rnn_type', type=str, default='LSTM')
-parser.add_argument('--hidden_size', type=int, default=250)
-parser.add_argument('--embed_size', type=int, default=250)
-parser.add_argument('--batch_size', type=int, default=20)
-parser.add_argument('--latent_size', type=int, default=24)
-parser.add_argument('--depthT', type=int, default=20)
-parser.add_argument('--depthG', type=int, default=20)
-parser.add_argument('--diterT', type=int, default=1)
-parser.add_argument('--diterG', type=int, default=5)
-parser.add_argument('--dropout', type=float, default=0.0)
-
-args = parser.parse_args()
-
-if args.test.endswith('.csv'):
-    args.test = list(pd.read_csv(args.test)['SMILES'])
-    args.test = [line.strip("\r\n ") for line in args.test]
+if args.data.endswith('.csv'):
+    args.data = list(pd.read_csv(args.data)['SMILES'])
+    args.data = [line.strip("\r\n ") for line in args.data]
 else:
-    args.test = [line.strip("\r\n ") for line in open(args.test)]
+    args.data = [line.strip("\r\n ") for line in open(args.data)]
 vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x,y) for x,y,_ in vocab])
@@ -57,18 +34,17 @@ model.load_state_dict(torch.load(args.model,
                                  map_location=device))
 model.eval()
 
-dataset = MoleculeDataset(args.test, args.vocab, args.atom_vocab, args.batch_size)
+dataset = MoleculeDataset(args.data, args.vocab, args.atom_vocab, args.batch_size)
 loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=lambda x:x[0])
 
 torch.manual_seed(args.seed)
 random.seed(args.seed)
 
-total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [], 'cls_scores': [],
-                             'icls_scores': [], 'topo_scores': [], 'assm_scores': []}
+total, acc, outputs = 0, 0, {'original': [], 'reconstructed': []}
 with torch.no_grad():
     for i,batch in enumerate(loader):
-        orig_smiles = args.test[args.batch_size * i : args.batch_size * (i + 1)]
-        dec_smiles, scores = model.reconstruct(batch)
+        orig_smiles = args.data[args.batch_size * i : args.batch_size * (i + 1)]
+        dec_smiles = model.reconstruct(batch)
         for x, y in zip(orig_smiles, dec_smiles):
             # display results
             print(x, y)
@@ -76,10 +52,6 @@ with torch.no_grad():
             # add to outputs
             outputs['original'].append(x)
             outputs['reconstructed'].append(y)
-            outputs['cls_score'].append(scores['cls_scores'])
-            outputs['icls_scores'].aappend(scores['icls_scores'])
-            outputs['topo_scores'].append(scores['topo_scores'])
-            outputs['assm_scores'].append(scores['assm_scores'])
 
 # save outputs
 outputs = pd.DataFrame.from_dict(outputs)

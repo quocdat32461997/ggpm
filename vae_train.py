@@ -1,3 +1,4 @@
+import json
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,42 +10,18 @@ import numpy as np
 import argparse
 
 from ggpm import *
+from configs import *
 import rdkit
 
 lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
+# get path to config
 parser = argparse.ArgumentParser()
-parser.add_argument('--train', required=True)
-parser.add_argument('--vocab', required=True)
-parser.add_argument('--atom_vocab', default=common_atom_vocab)
-parser.add_argument('--save_dir', required=True)
-parser.add_argument('--load_epoch', type=int, default=-1)
+parser.add_argument('--path-to-config', required=True)
 
-parser.add_argument('--rnn_type', type=str, default='LSTM')
-parser.add_argument('--hidden_size', type=int, default=250)
-parser.add_argument('--linear-hidden-size', type=int, default=64)
-parser.add_argument('--embed_size', type=int, default=250)
-parser.add_argument('--batch_size', type=int, default=20)
-parser.add_argument('--latent_size', type=int, default=24)
-parser.add_argument('--depthT', type=int, default=20)
-parser.add_argument('--depthG', type=int, default=20)
-parser.add_argument('--diterT', type=int, default=1)
-parser.add_argument('--diterG', type=int, default=5)
-parser.add_argument('--dropout', type=float, default=0.0)
-
-parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--clip_norm', type=float, default=20.0)
-parser.add_argument('--beta', type=float, default=0.1)
-
-parser.add_argument('--epoch', type=int, default=20)
-parser.add_argument('--anneal_rate', type=float, default=0.9)
-parser.add_argument('--print_iter', type=int, default=50)
-parser.add_argument('--save_iter', type=int, default=-1)
-parser.add_argument('--saved_model', type=str, default=None)
-
-args = parser.parse_args()
-print(args)
+# get configs
+args = Configs(path=parser.parse_args().path_to_config)
 
 vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
@@ -79,7 +56,7 @@ beta = args.beta
 meters = np.zeros(6)
 
 for epoch in range(args.load_epoch + 1, args.epoch):
-    dataset = DataFolder(args.train, args.batch_size)
+    dataset = DataFolder(args.data, args.batch_size)
 
     for batch in dataset:
         total_step += 1
