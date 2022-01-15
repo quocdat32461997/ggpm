@@ -30,7 +30,7 @@ args.vocab = PairVocab([(x,y) for x,y,_ in vocab])
 
 model = to_cuda(PropertyVAE(args))
 
-model.load_state_dict(torch.load(args.model,
+model.load_state_dict(torch.load(args.saved_model,
                                  map_location=device))
 model.eval()
 

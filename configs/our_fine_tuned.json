@@ -1,9 +1,10 @@
 {
-    "data": null,
-    "model": null,
-    "vocab": null,
+    "data": "chem_trio_combined_cleaned",
+    "saved_model": null,
+    "output": null,
+    "vocab": "trio_polymer_vocab.txt",
     "atom_vocab": null,
-    "save_dir": null,
+    "save_dir": "./ckpt",
     "load_epoch": -1,
     "rnn_type":  "LSTM",
     "hidden_size": 250,
@@ -23,7 +24,5 @@
     "anneal_rate": 0.9,
     "print_iter": 50,
     "save_iter": -1,
-    "saved_model": null,
-    "output": null,
     "seed": 1
 }
