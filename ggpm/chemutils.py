@@ -43,12 +43,14 @@ def is_aromatic_ring(mol):
 
 
 def find_fragments(mol):
+    # extract motif
     new_mol = Chem.RWMol(mol)
     for atom in new_mol.GetAtoms():
         atom.SetAtomMapNum(atom.GetIdx())
 
+    # break bonds to create fragments
     for bond in mol.GetBonds():
-        if bond.IsInRing(): continue
+        if bond.IsInRing(): continue # not break bond if in a motif
         a1 = bond.GetBeginAtom()
         a2 = bond.GetEndAtom()
 
@@ -56,6 +58,8 @@ def find_fragments(mol):
         if a1.IsInRing() and a2.IsInRing():
             new_mol.RemoveBond(a1.GetIdx(), a2.GetIdx())
 
+        # break bonds (u, v) where both u's and v's degree > 1
+        # and either u or v is in ring
         elif a1.IsInRing() and a2.GetDegree() > 1:
             new_idx = new_mol.AddAtom(copy_atom(a1))
             new_mol.GetAtomWithIdx(new_idx).SetAtomMapNum(a1.GetIdx())
@@ -68,13 +72,13 @@ def find_fragments(mol):
             new_mol.AddBond(new_idx, a1.GetIdx(), bond.GetBondType())
             new_mol.RemoveBond(a1.GetIdx(), a2.GetIdx())
 
-    new_mol = new_mol.GetMol()
+    new_mol = new_mol.GetMol() # get destructed mol
     new_smiles = Chem.MolToSmiles(new_mol) # periods to represent disjoint motifs
 
     # split fragments and convert into kekulized-format
     hopts = []
     for fragment in new_smiles.split('.'):
-        fmol = Chem.MolFromSmiles(fragment) # to moll
+        fmol = Chem.MolFromSmiles(fragment) # to mol
         indices = set([atom.GetAtomMapNum() for atom in fmol.GetAtoms()])
         #if len(indices) == 0:
         #    print(Chem.MolToSmiles(mol))

@@ -24,14 +24,14 @@ class MolGraph(object):
         self.smiles = smiles
         self.mol = get_mol(smiles)
 
-        self.mol_graph = self.build_mol_graph()
+        self.mol_graph = self.build_mol_graph() # build the atom-based graph of the given molecule
         self.clusters = self.find_clusters()
         self.clusters, self.atom_cls = self.pool_clusters()
         self.mol_tree = self.tree_decomp()
         self.order = self.label_tree() # list of tuples (x, y, #) that # = 1 if parent-> child; and otherwise if # = 0
 
     def find_clusters(self):
-        # Function to find clusters - each cluster is either a bond or a ring of multiple atoms
+        # Function to find clusters - each cluster is either a bond or a smallest ring
         mol = self.mol
         n_atoms = mol.GetNumAtoms()
         if n_atoms == 1:  # special case
@@ -91,6 +91,8 @@ class MolGraph(object):
         # find clusters and atom_cls that exist in the fragment vocab
         hoptions = []
         visited = set()
+
+        # find motifs
         fragments = find_fragments(self.mol)
 
         # add clusters in each fragment
@@ -180,7 +182,7 @@ class MolGraph(object):
         for atom in mol.GetAtoms():
             graph.nodes[atom.GetIdx()]['label'] = (atom.GetSymbol(), atom.GetFormalCharge())
 
-        # for set bond-type to mol graph
+        # set bond to each edge
         for bond in mol.GetBonds():
             a1 = bond.GetBeginAtom().GetIdx()
             a2 = bond.GetEndAtom().GetIdx()
