@@ -71,9 +71,9 @@ for epoch in range(args.load_epoch + 1, args.epoch):
     for batch in dataset:
         total_step += 1
         model.zero_grad()
-        total_loss, loss, kl_div, homo_loss, lumo_loss, wacc, iacc, tacc, sacc = model(*batch, beta=beta)
+        metrics = model(*batch, beta=beta)
 
-        loss.backward()
+        metrics['loss'''].backward()
         nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm)
         optimizer.step()
 

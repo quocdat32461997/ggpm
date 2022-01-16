@@ -10,7 +10,7 @@
     "load_epoch": -1,
     "rnn_type":  "LSTM",
     "hidden_size": 250,
-    "linear_hidden_size": 64,
+    "linear_hidden_size": 128,
     "embed_size": 250,
     "batch_size": 20,
     "latent_size": 24,
@@ -26,5 +26,6 @@
     "anneal_rate": 0.9,
     "print_iter": 50,
     "save_iter": -1,
-    "seed": 1
+    "seed": 1,
+    "device": "cuda:0"
 }

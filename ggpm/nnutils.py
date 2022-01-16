@@ -6,7 +6,39 @@ is_cuda = torch.cuda.is_available()
 device = torch.device('cuda:0') if is_cuda else torch.device('cpu')
 
 
+def copy_model(tbc_model, tc_model, path, w_property=False):
+    # Function to copy encoder-decoder model w/ property-optimizer
+
+    # load tc_model: encoder & decoder
+    # and load tbc_model
+    tc_model.load_state_dict(torch.load(path, map_location=device))
+    tc_model_dict = {'encoder': tc_model.encoder.state_dict(),
+                     'decoder': tc_model.decoder.state_dict()}
+    tbc_model_dict = {'encoder': tbc_model.encoder.state_dict(),
+                      'decoder': tbc_model.decoder.state_dict()}
+
+    # load property_optimizer if required
+    if w_property is True:
+        tc_model_dict['property_optim'] = tc_model.property_optim.state_dict()
+        tbc_model_dict['property_optim'] = tbc_model.property_optim.state_dict()
+
+    # filter pretrained dict
+    tc_model_dict = {seq_k: {k: v for k,v in tc_dict.items() if
+                     (k in tbc_model_dict[seq_k]) and (tbc_model_dict[seq_k][k].shape == tc_dict[k].shape)}
+                     for seq_k,tc_dict in tc_model_dict.items()}
+
+    # copy to tbc_model
+    tbc_model.encoder.load_state_dict(tc_model_dict['encoder'])
+    tbc_model.decoder.load_state_dict(tc_model_dict['decoder'])
+    if w_property is True:
+        tbc_model.property_optim.load_state_dict(tc_model_dict['property_optim'])
+
+    return tbc_model
+
+
 def copy_encoder(tbc_model, tc_model, path):
+    # Function to copy encoder only
+
     # load tc_model
     tc_model.load_state_dict(torch.load(path, map_location=device))
     tc_model_dict = tc_model.encoder.state_dict()
@@ -21,6 +53,7 @@ def copy_encoder(tbc_model, tc_model, path):
     tbc_model.encoder.load_state_dict(tc_model_dict)
 
     return tbc_model
+
 
 def index_select_ND(source, dim, index):
     index_size = index.size()

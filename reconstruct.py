@@ -6,6 +6,7 @@ import argparse
 
 import rdkit
 from ggpm import *
+from ggpm.property_vae import PropertyVAE
 
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
