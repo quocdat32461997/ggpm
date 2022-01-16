@@ -1,4 +1,3 @@
-import json
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -13,6 +12,8 @@ from ggpm import *
 from configs import *
 import rdkit
 
+from ggpm.property_vae import PropertyVAE
+
 lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
@@ -23,16 +24,25 @@ parser.add_argument('--path-to-config', required=True)
 # get configs
 args = Configs(path=parser.parse_args().path_to_config)
 
-vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
+vocab = [x.strip("\r\n ").split() for x in open(args.vocab_)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
 
+# save configs
+args.to_json(args.save_dir + '/configs.json')
+
 # load model
-model = to_cuda(HierPropVAE(args))
+model_class = PropertyVAE
+model = to_cuda(model_class(args))
+
 # load saved encoder only
 if args.saved_model:
-    model = copy_encoder(model, HierVAE(args), args.saved_model)
-    print('Successfully copied encoder weights.')
+    if args.load_encoder_only is True:
+        model = copy_encoder(model, model_class(args), args.saved_model)
+        print('Successfully copied encoder weights.')
+    else: # default to load entire encoder-decoder model
+        model = copy_model(model, model_class(args), args.saved_model, w_property=args.load_property_head)
+        print('Successfully copied encoder-decoder weights.')
 
 for param in model.parameters():
     if param.dim() == 1:
