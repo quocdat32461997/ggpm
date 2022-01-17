@@ -147,9 +147,6 @@ class PropOptVAE(nn.Module):
 
 
 class PropertyOptimizer(nn.Module):
-    TYPES = {'fixed': self.fixed_optimize,
-             'delta': self.delta_optimize}
-
     def __init__(self, input_size, hidden_size, dropout, latent_lr):
         super(PropertyOptimizer, self).__init__()
         self.input_size = input_size
@@ -203,17 +200,70 @@ class PropertyOptimizer(nn.Module):
         #   - type: str, type of optimizer (i.e. fixed, delta)
 
         # get property-optimizer
-        func = PropertyOptimizer.TYPES[kwargs['type']]
+        type = PropertyOptimizer.TYPES[kwargs['type']] is 'fixed':
+        if type is 'fixed':
+            func = self.hard_optimize
+        elif type is 'delta':
+            func = self.soft_optimize
+        else:
+            raise "Error: property-optimizing choice \"{}\"is not valid".format(type)
 
         # optimize HOMOs & LUMOs
         with torch.enable_grad():  # enable gradient calculation in the test mode
             return func(homo_vecs=root_vecs[:, :self.input_size], lumo_vecs=root_vecs[:, self.input_size:],
                         targets=targets, **kwargs)
 
-    def delta_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
-        return None
+    def soft_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
+        # Function to optimize homo_vecs and lumo_vecs until the delta difference is hit
 
-    def fixed_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
+        # cast delta and patience threshold to torch.float
+        delta = torch.tensor(kwargs['property_delta'], dtype=torch.float)
+        patience_threshold = torch.tensor(kwargs['patience_threshold'], dtype=torch.float)
+
+        for h_vec, l_vec, h_tar, l_tar, i in zip(homo_vecs, lumo_vecs, targets[0], targets[1],
+                                                               range(homo_vecs.shape[0])):
+            prev_loss, patience = 0, kwargs['patience']
+            # loop until patience hits 0 or total_loss less than delta to avoid infinite loop
+            while True and patience > 0:
+                # predict HOMOs and LUMOs
+                h_loss, l_loss, h_out, l_out = self.forward(h_vec, l_vec, (h_tar, l_tar))
+
+                # compute gradients
+                h_loss.backward()
+                l_loss.backward()
+
+                # break if sum of loss <= delta
+                total_loss = h_loss + l_loss
+                if total_loss <= delta: break
+
+                # update gradients if total loss larger than delta
+                h_vec = gradient_update(h_vec, h_out, h_tar)
+                l_vec = gradient_update(l_vec, l_out, l_tar)
+
+                # update patience to stop if loss change smaller than patience threshold
+                if abs(total_loss - prev_loss) <= patience_threshold:
+                    patience -= 1
+                else:  # reset patience
+                    patience = kwargs['patience']
+                # update prev_loss
+                prev_loss = total_loss
+
+            # assign vecs back
+            homo_vecs[i] = h_vec
+            lumo_vecs[i] = l_vec
+
+        # final prediction
+        return self.forward(homo_vecs, lumo_vecs, targets)
+
+    def hard_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
+        # Function to optimize homo_vecs and lumo_vecs in a fixed number of loops
+
+        def _update_latent(vecs, outs, targs):
+            # Function to iterate through each sample and gradient
+            # descent/ascent latent vectors accordingly
+
+            return torch.stack([gradient_update(v, o, t) for v, o, t in zip(vecs, outs, targs)], dim=0)
+
         for _ in range(kwargs['property_optim_step']):
             # predict HOMOs and LUMOs
             homo_loss, lumo_loss, homo_outputs, lumo_outputs = self.forward(homo_vecs, lumo_vecs, targets)
@@ -223,20 +273,8 @@ class PropertyOptimizer(nn.Module):
             lumo_loss.backward()
 
             # update latent vectors
-            homo_vecs = self.update_latent(homo_vecs, homo_outputs, targets[0])
-            lumo_vecs = self.update_latent(lumo_vecs, lumo_outputs, targets[1])
+            homo_vecs = _update_latent(homo_vecs, homo_outputs, targets[0])
+            lumo_vecs = _update_latent(lumo_vecs, lumo_outputs, targets[1])
 
         # final prediction
-        return self.property_optim(homo_vecs, lumo_vecs, labels=targets)
-
-    def update_latent(self, vecs, outputs, targets):
-        # Function to iterate through each sample and gradient
-        # descent/ascent latent vectors accordingly
-
-        def _gradient_update(vec, output, target):
-            # if output >= target, descent else ascent
-            return vec + self.latent_lr * vec.grad * (-1 if output >= target else 1)
-
-        vecs = torch.stack([_gradient_update(v, o, t)
-                            for v, o, t in zip(vecs, outputs, targets)], dim=0)
-        return vecs
+        return self.forward(homo_vecs, lumo_vecs, targets)

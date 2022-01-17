@@ -152,3 +152,10 @@ def to_cuda(inputs):
         return inputs.to(device)
     else:
         return inputs
+
+
+def gradient_update(vec, output, target):
+    # Function to perform gradient descent/ascent depending on
+    # the value comparison between output and target
+    # if output >= target, descent else ascent
+    return vec + self.latent_lr * vec.grad * (-1 if output >= target else 1)
