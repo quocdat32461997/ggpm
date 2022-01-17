@@ -17,7 +17,7 @@ class PropertyVAE(torch.nn.Module):
     def __init__(self, args):
         # Args:
         #   - hidden_size: int or list of int.
-        #   - num_prop: int
+        #   - num_prop: intdqn1700
         #       By default num_prop = 2 that specifies number of properties to be predicted
         #   - dropout: float
         #       Dropout value
@@ -25,16 +25,16 @@ class PropertyVAE(torch.nn.Module):
         self.latent_size = args.latent_size
 
         # property regressor
-        #self.property_regressor = PropertyRegressor(args.num_property, args.hiddeen_size, args.dropout)
+        # self.property_regressor = PropertyRegressor(args.num_property, args.hiddeen_size, args.dropout)
 
         # initialize encoder and decoder
         self.encoder = MotifEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
-                                      args.depthT, args.depthG, args.dropout)
+                                    args.depthT, args.depthG, args.dropout)
         self.decoder = MotifDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
-                                      args.latent_size, args.diterT, args.diterG, args.dropout)
+                                    args.latent_size, args.diterT, args.diterG, args.dropout)
 
         # tie embedding
-        #self.encoder.tie_embedding(self.decoder.hmpn)
+        # self.encoder.tie_embedding(self.decoder.hmpn)
 
         # guassian noise
         self.R_mean = torch.nn.Linear(args.hidden_size, args.latent_size)
@@ -81,13 +81,17 @@ class PropOptVAE(nn.Module):
     def __init__(self, args):
         super(PropOptVAE, self).__init__()
         self.encoder = MotifEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
-                                      args.depthT, args.depthG, args.dropout)
+                                    args.depthT, args.depthG, args.dropout)
         self.decoder = MotifDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
-                                      args.latent_size, args.diterT, args.diterG, args.dropout)
-        self.property_optim = PropertyOptimizer(input_size=args.latent_size // 2, hidden_size=args.linear_hidden_size,
-                                                dropout=args.dropout)
-        #self.encoder.tie_embedding(self.decoder.hmpn)
+                                    args.latent_size, args.diterT, args.diterG, args.dropout)
+
+        self.property_hidden_size = args.latent_size // 2
+        self.property_optim = PropertyOptimizer(input_size=self.property_hidden_size,
+                                                hidden_size=args.linear_hidden_size,
+                                                dropout=args.dropout, latent_lr=args.latent_lr)
+        # self.encoder.tie_embedding(self.decoder.hmpn)
         self.latent_size = args.latent_size
+        self.property_optim_step = args.property_optim_step
 
         # guassian noise
         self.R_mean = torch.nn.Linear(args.hidden_size, args.latent_size)
@@ -102,16 +106,20 @@ class PropOptVAE(nn.Module):
         z_vecs = z_mean + torch.exp(z_log_var / 2) * epsilon if perturb else z_mean
         return z_vecs, kl_loss
 
-    def sample(self, batch_size):
-        root_vecs = to_cuda(torch.randn(batch_size, self.latent_size))
-        return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
-
-    def reconstruct(self, batch):
-        mols, graphs, tensors, _, _, _ = batch
+    def reconstruct(self, batch, **kwargs):
+        mols, graphs, tensors, _, homos, lumos = batch
         tree_tensors, _ = tensors = make_cuda(tensors)
-        root_vecs, tree_vecs, _, graph_vecs = self.encoder(tree_tensors)
 
+        # encode
+        root_vecs, tree_vecs = self.encoder(tree_tensors)
+
+        # sample latent vectors
         root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
+
+        # find new latent vector that optimize HOMO & LUMO properties
+        property_outputs, root_vecs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
+                                                                   **kwargs)
+
         return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
 
     def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
@@ -119,11 +127,13 @@ class PropOptVAE(nn.Module):
 
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 
-        root_vecs, root_kl = self.rsample(root_vecs, self.R_mean, self.R_var, perturb_z)
+        root_vecs, root_kl = self.rsample(root_vecs, perturb_z)
         kl_div = root_kl
 
         # HOMO & LUMO predictors
-        homo_loss, lumo_loss = self.property_optim(root_vecs, labels=(homos, lumos))
+        homo_loss, lumo_loss, _, _ = self.property_optim(homo_vecs=root_vecs[:, :self.property_hidden_size],
+                                                         lumo_vecs=root_vecs[:, self.property_hidden_size:],
+                                                         labels=(homos, lumos))
 
         # modify molecules
         loss, wacc, iacc, tacc, sacc = self.decoder((root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
@@ -131,25 +141,31 @@ class PropOptVAE(nn.Module):
         # sum-up loss
         loss += beta * kl_div
         total_loss = loss + homo_loss + lumo_loss
-        return {'loss': total_loss, 'recs_loss': loss, 'kl_div': kl_div.items(), 'homo_loss': homo_loss, 'lumo_loss': lumo_loss,
+        return {'loss': total_loss, 'recs_loss': loss, 'kl_div': kl_div.items(), 'homo_loss': homo_loss,
+                'lumo_loss': lumo_loss,
                 'wacc': wacc, 'iacc': iacc, 'tacc': tacc, 'sacc': sacc}
 
 
 class PropertyOptimizer(nn.Module):
-    def __init__(self, input_size, hidden_size, dropout=0.0):
+    TYPES = {'fixed': self.fixed_optimize,
+             'delta': self.delta_optimize}
+
+    def __init__(self, input_size, hidden_size, dropout, latent_lr):
         super(PropertyOptimizer, self).__init__()
         self.input_size = input_size
+        self.latent_r = latent_lr
+
         # hidden_size to list
         hidden_size = [hidden_size] if isinstance(hidden_size, int) else hidden_size
         hidden_size = [input_size] + hidden_size
 
         # define homo and lumo linear head
         self.homo_linear, self.lumo_linear = nn.ModuleList(), nn.ModuleList()
-        for idx in range(len(hidden_size)-1):
-            self.homo_linear.extend([nn.Linear(hidden_size[idx], hidden_size[idx+1]),
-                nn.ReLU(), nn.Dropout(dropout)])
+        for idx in range(len(hidden_size) - 1):
+            self.homo_linear.extend([nn.Linear(hidden_size[idx], hidden_size[idx + 1]),
+                                     nn.ReLU(), nn.Dropout(dropout)])
             self.lumo_linear.extend([nn.Linear(hidden_size[idx], hidden_size[idx + 1]),
-                nn.ReLU(), nn.Dropout(dropout)])
+                                     nn.ReLU(), nn.Dropout(dropout)])
         self.homo_linear.append(nn.Linear(hidden_size[-1], 1))
         self.lumo_linear.append(nn.Linear(hidden_size[-1], 1))
 
@@ -157,27 +173,70 @@ class PropertyOptimizer(nn.Module):
         # get last dim of outputs of loss-computing since each property has only 1 score
         return torch.nn.MSELoss()(outputs[:, -1], torch.tensor(labels.tolist(), dtype=torch.float))
 
-    def forward(self, features, labels):
-        # extract labels
-        homo_labels, lumo_labels = labels
+    def forward(self, homo_vecs, lumo_vecs, targets):
+        # Input:
+        #   - homo_vecs: torch.Tensor
+        #   - lumo_vecs: torch.Tensor
+        #   - targets: tuple of HOMO and LUMO targets
 
         # make predictions
-        homo_outputs, lumo_outputs = self.predict(features=features)
+        homo_outputs, lumo_outputs = self.predict(homo_vecs, lumo_vecs)
 
         # compute loss
-        homo_loss = self.compute_loss(homo_outputs, homo_labels)
-        lumo_loss = self.compute_loss(lumo_outputs, lumo_labels)
+        homo_loss = self.compute_loss(homo_outputs, targets[0])
+        lumo_loss = self.compute_loss(lumo_outputs, targeets[1])
 
-        return homo_loss, lumo_loss
+        return homo_loss, lumo_loss, homo_outputs, lumo_outputs
 
-    def predict(self, features):
-        # extract features
-        homo_outputs = features[:, :self.input_size]
-        lumo_outputs = features[:, self.input_size:]
-
+    def predict(self, homo_vecs, lumo_vecs):
         # make predictions
         for hl, ll in zip(self.homo_linear, self.lumo_linear):
-            homo_outputs = hl(homo_outputs)
-            lumo_outputs = ll(lumo_outputs)
+            homo_vecs = hl(homo_vecs)
+            lumo_vecs = ll(lumo_vecs)
 
-        return homo_outputs, lumo_outputs
+        return homo_vecs, lumo_vecs
+
+    def optimize(self, root_vecs, targets, **kwargs):
+        # Input:
+        #   - root_vecs: torch.Tensor of root_vecs
+        #   - targets: tuples of HOMO and LUMO targets
+        #   - type: str, type of optimizer (i.e. fixed, delta)
+
+        # get property-optimizer
+        func = PropertyOptimizer.TYPES[kwargs['type']]
+
+        # optimize HOMOs & LUMOs
+        with torch.enable_grad():  # enable gradient calculation in the test mode
+            return func(homo_vecs=root_vecs[:, :self.input_size], lumo_vecs=root_vecs[:, self.input_size:],
+                        targets=targets, **kwargs)
+
+    def delta_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
+        return None
+
+    def fixed_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
+        for _ in range(kwargs['property_optim_step']):
+            # predict HOMOs and LUMOs
+            homo_loss, lumo_loss, homo_outputs, lumo_outputs = self.forward(homo_vecs, lumo_vecs, targets)
+
+            # compute gradients
+            homo_loss.backward()
+            lumo_loss.backward()
+
+            # update latent vectors
+            homo_vecs = self.update_latent(homo_vecs, homo_outputs, targets[0])
+            lumo_vecs = self.update_latent(lumo_vecs, lumo_outputs, targets[1])
+
+        # final prediction
+        return self.property_optim(homo_vecs, lumo_vecs, labels=targets)
+
+    def update_latent(self, vecs, outputs, targets):
+        # Function to iterate through each sample and gradient
+        # descent/ascent latent vectors accordingly
+
+        def _gradient_update(vec, output, target):
+            # if output >= target, descent else ascent
+            return vec + self.latent_lr * vec.grad * (-1 if output >= target else 1)
+
+        vecs = torch.stack([_gradient_update(v, o, t)
+                            for v, o, t in zip(vecs, outputs, targets)], dim=0)
+        return vecs

@@ -23,9 +23,9 @@ def copy_model(tbc_model, tc_model, path, w_property=False):
         tbc_model_dict['property_optim'] = tbc_model.property_optim.state_dict()
 
     # filter pretrained dict
-    tc_model_dict = {seq_k: {k: v for k,v in tc_dict.items() if
-                     (k in tbc_model_dict[seq_k]) and (tbc_model_dict[seq_k][k].shape == tc_dict[k].shape)}
-                     for seq_k,tc_dict in tc_model_dict.items()}
+    tc_model_dict = {seq_k: {k: v for k, v in tc_dict.items() if
+                             (k in tbc_model_dict[seq_k]) and (tbc_model_dict[seq_k][k].shape == tc_dict[k].shape)}
+                     for seq_k, tc_dict in tc_model_dict.items()}
 
     # copy to tbc_model
     tbc_model.encoder.load_state_dict(tc_model_dict['encoder'])
@@ -45,11 +45,11 @@ def copy_encoder(tbc_model, tc_model, path):
 
     # filter pretrained dict
     model_dict = tbc_model.encoder.state_dict()
-    tc_model_dict = {k: v for k,v in tc_model_dict.items() if
+    tc_model_dict = {k: v for k, v in tc_model_dict.items() if
                      (k in model_dict) and (model_dict[k].shape == tc_model_dict[k].shape)}
 
     # load model dict
-    #model_dict.update(tc_model_dict)
+    # model_dict.update(tc_model_dict)
     tbc_model.encoder.load_state_dict(tc_model_dict)
 
     return tbc_model
@@ -108,7 +108,7 @@ def zip_tensors(tup_list):
     tup_list = zip(*tup_list)
     for a in tup_list:
         if type(a[0]) is int:
-            res.append(torch.LongTensor(a))#.cuda())
+            res.append(torch.LongTensor(a))  # .cuda())
         else:
             res.append(torch.stack(a, dim=0))
     return res
