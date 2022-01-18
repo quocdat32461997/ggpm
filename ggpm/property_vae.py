@@ -5,9 +5,12 @@ from ggpm.decoder import MotifDecoder
 from ggpm.nnutils import *
 
 
+def make_tensor(x):
+    return to_cuda(x if type(x) is torch.Tensor else torch.tensor(x.tolist()))
+
+
 def make_cuda(tensors):
     tree_tensors, graph_tensors = tensors
-    make_tensor = lambda x: to_cuda(x if type(x) is torch.Tensor else torch.tensor(x))
     tree_tensors = [make_tensor(x).long() for x in tree_tensors[:-1]] + [tree_tensors[-1]]
     graph_tensors = [make_tensor(x).long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
     return tree_tensors, graph_tensors
@@ -73,8 +76,9 @@ class PropertyVAE(torch.nn.Module):
         # decode
         loss, wacc, iacc, tacc, sacc = self.decoder(mols, (root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
 
-        return {'loss': loss + beta * kl_div, 'kl_div': kl_div.items(),
-                'wacc': wacc, 'iacc': iacc, 'tacc': tacc, 'sacc': sacc}
+        loss += beta * kl_div
+        return loss, {'Loss': loss.item(), 'KL:': kl_div.item(),
+                'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
 
 
 class PropOptVAE(nn.Module):
@@ -85,6 +89,10 @@ class PropOptVAE(nn.Module):
         self.decoder = MotifDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
                                     args.latent_size, args.diterT, args.diterG, args.dropout)
 
+        # tie embedding
+        self.encoder.tie_embedding(self.decoder.hmpn)
+
+        # define property optimizer
         self.property_hidden_size = args.latent_size // 2
         self.property_optim = PropertyOptimizer(input_size=self.property_hidden_size,
                                                 hidden_size=args.linear_hidden_size,
@@ -93,7 +101,7 @@ class PropOptVAE(nn.Module):
         self.latent_size = args.latent_size
         self.property_optim_step = args.property_optim_step
 
-        # guassian noise
+        # gaussian noise
         self.R_mean = torch.nn.Linear(args.hidden_size, args.latent_size)
         self.R_var = torch.nn.Linear(args.hidden_size, args.latent_size)
 
@@ -109,6 +117,7 @@ class PropOptVAE(nn.Module):
     def reconstruct(self, batch, **kwargs):
         mols, graphs, tensors, _, homos, lumos = batch
         tree_tensors, _ = tensors = make_cuda(tensors)
+        homos, lumos = make_tensor(homos), make_tensor(lumos)
 
         # encode
         root_vecs, tree_vecs = self.encoder(tree_tensors)
@@ -124,16 +133,19 @@ class PropOptVAE(nn.Module):
 
     def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
         tree_tensors, _ = tensors = make_cuda(tensors)
+        homos, lumos = make_tensor(homos), make_tensor(lumos)
 
+        # encoding
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 
+        # sampling latent vectors
         root_vecs, root_kl = self.rsample(root_vecs, perturb_z)
         kl_div = root_kl
 
         # HOMO & LUMO predictors
         homo_loss, lumo_loss, _, _ = self.property_optim(homo_vecs=root_vecs[:, :self.property_hidden_size],
                                                          lumo_vecs=root_vecs[:, self.property_hidden_size:],
-                                                         labels=(homos, lumos))
+                                                         targets=(homos, lumos))
 
         # modify molecules
         loss, wacc, iacc, tacc, sacc = self.decoder((root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
@@ -141,9 +153,9 @@ class PropOptVAE(nn.Module):
         # sum-up loss
         loss += beta * kl_div
         total_loss = loss + homo_loss + lumo_loss
-        return {'loss': total_loss, 'recs_loss': loss, 'kl_div': kl_div.items(), 'homo_loss': homo_loss,
-                'lumo_loss': lumo_loss,
-                'wacc': wacc, 'iacc': iacc, 'tacc': tacc, 'sacc': sacc}
+        return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.items(), 'Recs_Loss': loss.item(),
+                'HOMO_MSE': homo_loss, 'LUMO_MSE': lumo_loss,
+                'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
 
 
 class PropertyOptimizer(nn.Module):
@@ -166,9 +178,9 @@ class PropertyOptimizer(nn.Module):
         self.homo_linear.append(nn.Linear(hidden_size[-1], 1))
         self.lumo_linear.append(nn.Linear(hidden_size[-1], 1))
 
-    def compute_loss(self, outputs, labels):
+    def compute_loss(self, outputs, targets):
         # get last dim of outputs of loss-computing since each property has only 1 score
-        return torch.nn.MSELoss()(outputs[:, -1], torch.tensor(labels.tolist(), dtype=torch.float))
+        return torch.nn.MSELoss()(outputs[:, -1], targets)
 
     def forward(self, homo_vecs, lumo_vecs, targets):
         # Input:
@@ -181,7 +193,7 @@ class PropertyOptimizer(nn.Module):
 
         # compute loss
         homo_loss = self.compute_loss(homo_outputs, targets[0])
-        lumo_loss = self.compute_loss(lumo_outputs, targeets[1])
+        lumo_loss = self.compute_loss(lumo_outputs, targets[1])
 
         return homo_loss, lumo_loss, homo_outputs, lumo_outputs
 
@@ -200,7 +212,6 @@ class PropertyOptimizer(nn.Module):
         #   - type: str, type of optimizer (i.e. fixed, delta)
 
         # get property-optimizer
-        type = PropertyOptimizer.TYPES[kwargs['type']] is 'fixed':
         if type is 'fixed':
             func = self.hard_optimize
         elif type is 'delta':

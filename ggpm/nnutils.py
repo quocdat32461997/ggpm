@@ -148,10 +148,7 @@ def hier_topk(cls_scores, icls_scores, vocab, topk):
 
 def to_cuda(inputs):
     # Function to convert to cuda tensors if cuda cores exist
-    if is_cuda:
-        return inputs.to(device)
-    else:
-        return inputs
+    return inputs.to(device)
 
 
 def gradient_update(vec, output, target):
