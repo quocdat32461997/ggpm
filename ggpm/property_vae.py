@@ -69,7 +69,7 @@ class PropertyVAE(torch.nn.Module):
         # encode
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 
-        # add guassian noise
+        # add gaussian noise
         root_vecs, root_kl = self.rsample(root_vecs, perturb_z)
         kl_div = root_kl
 
@@ -122,7 +122,7 @@ class PropOptVAE(nn.Module):
         # encode
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 
-        # sample latent vectors
+        # add gaussian noise
         root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
 
         # find new latent vector that optimize HOMO & LUMO properties
@@ -135,25 +135,25 @@ class PropOptVAE(nn.Module):
         tree_tensors, _ = tensors = make_cuda(tensors)
         homos, lumos = make_tensor(homos), make_tensor(lumos)
 
-        # encoding
+        # encode
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 
         # sampling latent vectors
         root_vecs, root_kl = self.rsample(root_vecs, perturb_z)
         kl_div = root_kl
 
-        # HOMO & LUMO predictors
+        # predict HOMO & LUMO
         homo_loss, lumo_loss, _, _ = self.property_optim(homo_vecs=root_vecs[:, :self.property_hidden_size],
                                                          lumo_vecs=root_vecs[:, self.property_hidden_size:],
                                                          targets=(homos, lumos))
 
-        # modify molecules
-        loss, wacc, iacc, tacc, sacc = self.decoder((root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
+        # decode
+        loss, wacc, iacc, tacc, sacc = self.decoder(mols, (root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
 
         # sum-up loss
         loss += beta * kl_div
         total_loss = loss + homo_loss + lumo_loss
-        return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.items(), 'Recs_Loss': loss.item(),
+        return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.item(), 'Recs_Loss': loss.item(),
                 'HOMO_MSE': homo_loss, 'LUMO_MSE': lumo_loss,
                 'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
 
@@ -180,7 +180,7 @@ class PropertyOptimizer(nn.Module):
 
     def compute_loss(self, outputs, targets):
         # get last dim of outputs of loss-computing since each property has only 1 score
-        return torch.nn.MSELoss()(outputs[:, -1], targets)
+        return torch.nn.MSELoss()(outputs, targets)
 
     def forward(self, homo_vecs, lumo_vecs, targets):
         # Input:
@@ -246,6 +246,43 @@ class PropertyOptimizer(nn.Module):
                 # break if sum of loss <= delta
                 total_loss = h_loss + l_loss
                 if total_loss <= delta: break
+
+                # update gradients if total loss larger than delta
+                h_vec = gradient_update(h_vec, h_out, h_tar)
+                l_vec = gradient_update(l_vec, l_out, l_tar)
+
+                # update patience to stop if loss change smaller than patience threshold
+                if abs(total_loss - prev_loss) <= patience_threshold:
+                    patience -= 1
+                else:  # reset patience
+                    patience = kwargs['patience']
+                # update prev_loss
+                prev_loss = total_loss
+
+            # assign vecs back
+            homo_vecs[i] = h_vec
+            lumo_vecs[i] = l_vec
+
+        # final prediction
+        return self.forward(homo_vecs, lumo_vecs, targets)
+
+    def patience_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
+        # Function to optimize homo_vecs and lumo_vecs until the delta difference is hit
+
+        # cast patience threshold to torch.float
+        patience_threshold = torch.tensor(kwargs['patience_threshold'], dtype=torch.float)
+
+        for h_vec, l_vec, h_tar, l_tar, i in zip(homo_vecs, lumo_vecs, targets[0], targets[1],
+                                                 range(homo_vecs.shape[0])):
+            prev_loss, patience = 0, kwargs['patience']
+            # loop until patience hits 0 or total_loss less than delta to avoid infinite loop
+            while True and patience > 0:
+                # predict HOMOs and LUMOs
+                h_loss, l_loss, h_out, l_out = self.forward(h_vec, l_vec, (h_tar, l_tar))
+
+                # compute gradients
+                h_loss.backward()
+                l_loss.backward()
 
                 # update gradients if total loss larger than delta
                 h_vec = gradient_update(h_vec, h_out, h_tar)
