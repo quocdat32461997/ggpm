@@ -2,6 +2,9 @@ import torch
 import rdkit
 import rdkit.Chem as Chem
 import networkx as nx
+import numpy as np
+from icecream import ic
+
 from ggpm.chemutils import *
 from ggpm.nnutils import *
 
@@ -24,11 +27,11 @@ class MolGraph(object):
         self.smiles = smiles
         self.mol = get_mol(smiles)
 
-        self.mol_graph = self.build_mol_graph() # build the atom-based graph of the given molecule
+        self.mol_graph = self.build_mol_graph()  # build the atom-based graph of the given molecule
         self.clusters = self.find_clusters()
         self.clusters, self.atom_cls = self.pool_clusters()
         self.mol_tree = self.tree_decomp()
-        self.order = self.label_tree() # list of tuples (x, y, #) that # = 1 if parent-> child; and otherwise if # = 0
+        self.order = self.label_tree()  # list of tuples (x, y, #) that # = 1 if parent-> child; and otherwise if # = 0
 
     def find_clusters(self):
         # Function to find clusters - each cluster is either a bond or a smallest ring
@@ -127,7 +130,7 @@ class MolGraph(object):
                 self.mol_tree[x][y]['label'] = 0
                 self.mol_tree[y][x]['label'] = idx + 1
                 prev_sib[y] = sorted_child[:idx]
-                prev_sib[y] += [x, fa] if fa >= 0 else [x] # since decoded from graph, parent is also a sibling.
+                prev_sib[y] += [x, fa] if fa >= 0 else [x]  # since decoded from graph, parent is also a sibling.
                 order.append((x, y, 1))
                 dfs(order, pa, prev_sib, y, x)
                 order.append((y, x, 0))
@@ -153,7 +156,8 @@ class MolGraph(object):
             tree.nodes[i]['ismiles'] = ismiles = get_smiles(cmol)
             tree.nodes[i]['inter_label'] = inter_label
             tree.nodes[i]['smiles'] = smiles = get_smiles(set_atommap(cmol))
-            tree.nodes[i]['label'] = (smiles, ismiles) if len(cls) > 1 else (smiles, smiles) # edge's label - tuple(smiles, index-smiles)
+            tree.nodes[i]['label'] = (smiles, ismiles) if len(cls) > 1 else (
+                smiles, smiles)  # edge's label - tuple(smiles, index-smiles)
             tree.nodes[i]['cluster'] = cls
             tree.nodes[i]['assm_cands'] = []
 
@@ -176,7 +180,7 @@ class MolGraph(object):
     def build_mol_graph(self):
         # Function to build a mol in terms of graph (aka adjacency matrix)
         mol = self.mol
-        graph = nx.DiGraph(Chem.rdmolops.GetAdjacencyMatrix(mol)) # convert mol to graph by adjacency matrix
+        graph = nx.DiGraph(Chem.rdmolops.GetAdjacencyMatrix(mol))  # convert mol to graph by adjacency matrix
 
         # each node in mol graph, set atom symbol and formal charge
         for atom in mol.GetAtoms():
@@ -194,18 +198,19 @@ class MolGraph(object):
 
     @staticmethod
     def tensorize(mol_batch, vocab, avocab):
-        mol_batches = []
+        mol_batches, homos, lumos = [], [], []
         for idx, x in enumerate(mol_batch):
             mol_batches.append(x[0])
+            homos.append(x[1]), lumos.append(x[2])
             mol_batch[idx][0] = MolGraph(x[0])
 
         # tensorize to graph
-        tree_tensors, tree_batchG = MolGraph.tensorize_graph([x.mol_tree for x in mol_batch[:, 0]], vocab)
-        graph_tensors, graph_batchG = MolGraph.tensorize_graph([x.mol_graph for x in mol_batch[:, 0]], avocab)
+        tree_tensors, tree_batchG = MolGraph.tensorize_graph([x[0].mol_tree for x in mol_batch], vocab)
+        graph_tensors, graph_batchG = MolGraph.tensorize_graph([x[0].mol_graph for x in mol_batch], avocab)
         tree_scope = tree_tensors[-1]
         graph_scope = graph_tensors[-1]
 
-        max_cls_size = max([len(c) for x in mol_batch[:, 0] for c in x.clusters])
+        max_cls_size = max([len(c) for x in mol_batch for c in x[0].clusters])
         cgraph = torch.zeros(len(tree_batchG) + 1, max_cls_size).int()
         for v, attr in tree_batchG.nodes(data=True):
             bid = attr['batch_id']
@@ -216,20 +221,21 @@ class MolGraph(object):
             cgraph[v, :len(cls)] = torch.IntTensor(cls)
 
         all_orders = []
-        for i, hmol in enumerate(mol_batch[:, 0]):
+        for i, hmol in enumerate(mol_batch):
+            hmol = hmol[0]  # get MolGraph instance only
             offset = tree_scope[i][0]
             order = [(x + offset, y + offset, z) for x, y, z in hmol.order[:-1]] + [
                 (hmol.order[-1][0] + offset, None, 0)]
             all_orders.append(order)
 
         tree_tensors = tree_tensors[:4] + (cgraph, tree_scope)
+        homos, lumos = np.array(homos), np.array(lumos)
         return mol_batches, (tree_batchG, graph_batchG), (tree_tensors, graph_tensors), all_orders, \
-               mol_batch[:, 1], mol_batch[:, 2] # the last 2 columsn are HOMO and LUMO scores
-
+               homos, lumos  # the last 2 columns are HOMO and LUMO scores
 
     @staticmethod
     def tensorize_graph(graph_batch, vocab):
-        fnode, fmess = [None], [(0, 0, 0, 0)] # nodes/fragments and edges
+        fnode, fmess = [None], [(0, 0, 0, 0)]  # nodes/fragments and edges
         # agraph shape: node x len_edge_dict, bgraph shape of len_edge_dict x num_predecessor
         agraph, bgraph = [[]], [[]]
         scope = []

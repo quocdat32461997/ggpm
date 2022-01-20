@@ -43,15 +43,12 @@ if __name__ == "__main__":
     random.seed(1)
 
     if args.train.endswith('.csv'):
-        data = pd.read_csv(args.train) \
+        data = pd.read_csv(args.train)
         # drop row w/ emtpy HOMO and LUMO
-        data = data.dropna().reset_index(drop=True)
-        #data[['HOMO', 'LUMO']] = data[['HOMO', 'LUMO']].astype('float64')
-        data = data.to_numpy()
-        #print(data[:2, 0], data[:2, 1], data[:2, 2])
+        data = data.dropna().reset_index(drop=True).to_numpy()
     else:
         with open(args.train) as f:
-            data = [line.strip("\r\n ").split() for line in f]
+            data = [[x, float(h), float(l)] for line in f for x, h, l in line.strip("\r\n ").split()]
 
     random.shuffle(data)
 

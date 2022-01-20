@@ -33,6 +33,7 @@ def copy_model(tbc_model, tc_model, path, w_property=False):
     if w_property is True:
         tbc_model.property_optim.load_state_dict(tc_model_dict['property_optim'])
 
+    print("Successfully copied the model with property_head={}.".format(w_property))
     return tbc_model
 
 
@@ -52,6 +53,7 @@ def copy_encoder(tbc_model, tc_model, path):
     # model_dict.update(tc_model_dict)
     tbc_model.encoder.load_state_dict(tc_model_dict)
 
+    print("Successfully copied encoder.")
     return tbc_model
 
 

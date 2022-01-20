@@ -6,7 +6,8 @@ import argparse
 
 import rdkit
 from ggpm import *
-from ggpm.property_vae import PropertyVAE
+from ggpm.property_vae import PropertyVAE, PropOptVAE
+from configs import *
 
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -20,39 +21,46 @@ parser.add_argument('--path-to-config', required=True)
 # get configs
 args = Configs(path=parser.parse_args().path_to_config)
 
-if args.data.endswith('.csv'):
-    args.data = list(pd.read_csv(args.data)['SMILES'])
-    args.data = [line.strip("\r\n ") for line in args.data]
+if args.test_data.endswith('.csv'):
+    args.test_data = pd.read_csv(args.test_data)
+    # drop row w/ empty HOMO and LUMO
+    args.test_data = args.test_data.dropna().reset_index(drop=True)
+    args.test_data = args.test_data.to_numpy()
+    print(args.test_data[0:2], type(args.test_data))
 else:
-    args.data = [line.strip("\r\n ") for line in open(args.data)]
-vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
+    args.test_data = [[x, float(x), float(l)] for line in open(args.test_data) for x, h, l in line.strip("\r\n ").split()]
+
+vocab = [x.strip("\r\n ").split() for x in open(args.vocab_)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x,y) for x,y,_ in vocab])
 
-model = to_cuda(PropertyVAE(args))
+model = to_cuda(PropOptVAE(args))
 
 model.load_state_dict(torch.load(args.saved_model,
                                  map_location=device))
 model.eval()
 
-dataset = MoleculeDataset(args.data, args.vocab, args.atom_vocab, args.batch_size)
+dataset = MoleculeDataset(args.test_data, args.vocab, args.atom_vocab, args.batch_size)
 loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=lambda x:x[0])
 
 torch.manual_seed(args.seed)
 random.seed(args.seed)
 
-total, acc, outputs = 0, 0, {'original': [], 'reconstructed': []}
+total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
+                             'homo': [], 'lumo': []}
 with torch.no_grad():
     for i,batch in enumerate(loader):
-        orig_smiles = args.data[args.batch_size * i : args.batch_size * (i + 1)]
-        dec_smiles = model.reconstruct(batch)
-        for x, y in zip(orig_smiles, dec_smiles):
+        orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
+        properties, dec_smiles = model.reconstruct(batch)
+        for x, y, p in zip(orig_smiles, dec_smiles, properties):
             # display results
-            print(x, y)
+            print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, p[0], [1]))
 
             # add to outputs
             outputs['original'].append(x)
             outputs['reconstructed'].append(y)
+            outputs['homo'].append(p[0])
+            outputs['lumo'].append(p[1])
 
 # save outputs
 outputs = pd.DataFrame.from_dict(outputs)

@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 from ggpm.encoder import MotifEncoder
 from ggpm.decoder import MotifDecoder
@@ -6,7 +7,12 @@ from ggpm.nnutils import *
 
 
 def make_tensor(x):
-    return to_cuda(x if type(x) is torch.Tensor else torch.tensor(x.tolist()))
+    if not isinstance(x, torch.Tensor):
+        if isinstance(x, np.ndarray):
+            x = x.tolist()
+        x = torch.tensor(x)
+
+    return to_cuda(x)
 
 
 def make_cuda(tensors):
@@ -126,10 +132,12 @@ class PropOptVAE(nn.Module):
         root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
 
         # find new latent vector that optimize HOMO & LUMO properties
-        property_outputs, root_vecs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
-                                                                   **kwargs)
+        root_vecs, _, property_outputs = self.property_optim.optimize(root_vecs=root_vecs,
+                                                                      targets=(homos, lumos), **kwargs)
 
-        return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
+        # extract property outputs
+        return property_outputs, self.decoder.decode((root_vecs, root_vecs, root_vecs),
+                                                     greedy=True, max_decode_step=150)
 
     def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
         tree_tensors, _ = tensors = make_cuda(tensors)
@@ -154,8 +162,7 @@ class PropOptVAE(nn.Module):
         loss += beta * kl_div
         total_loss = loss + homo_loss + lumo_loss
         return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.item(), 'Recs_Loss': loss.item(),
-                'HOMO_MSE': homo_loss, 'LUMO_MSE': lumo_loss,
-                'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
+                'HOMO_MSE': homo_loss, 'LUMO_MSE': lumo_loss, 'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
 
 
 class PropertyOptimizer(nn.Module):
@@ -221,8 +228,9 @@ class PropertyOptimizer(nn.Module):
 
         # optimize HOMOs & LUMOs
         with torch.enable_grad():  # enable gradient calculation in the test mode
-            return func(homo_vecs=root_vecs[:, :self.input_size], lumo_vecs=root_vecs[:, self.input_size:],
-                        targets=targets, **kwargs)
+            root_vecs, outputs = func(homo_vecs=root_vecs[:, :self.input_size],
+                                      lumo_vecs=root_vecs[:, self.input_size:], targets=targets, **kwargs)
+        return root_vecs, outputs[0:2], outputs[2:4]
 
     def soft_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
         # Function to optimize homo_vecs and lumo_vecs until the delta difference is hit
@@ -264,7 +272,7 @@ class PropertyOptimizer(nn.Module):
             lumo_vecs[i] = l_vec
 
         # final prediction
-        return self.forward(homo_vecs, lumo_vecs, targets)
+        return torch.cat([homo_vecs, lumo_vecs], dim=-1), self.forward(homo_vecs, lumo_vecs, targets)
 
     def patience_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
         # Function to optimize homo_vecs and lumo_vecs until the delta difference is hit
@@ -301,7 +309,7 @@ class PropertyOptimizer(nn.Module):
             lumo_vecs[i] = l_vec
 
         # final prediction
-        return self.forward(homo_vecs, lumo_vecs, targets)
+        return torch.cat([homo_vecs, lumo_vecs], dim=-1), self.forward(homo_vecs, lumo_vecs, targets)
 
     def hard_optimize(self, homo_vecs, lumo_vecs, targets, **kwargs):
         # Function to optimize homo_vecs and lumo_vecs in a fixed number of loops
@@ -325,4 +333,4 @@ class PropertyOptimizer(nn.Module):
             lumo_vecs = _update_latent(lumo_vecs, lumo_outputs, targets[1])
 
         # final prediction
-        return self.forward(homo_vecs, lumo_vecs, targets)
+        return torch.cat([homo_vecs, lumo_vecs], dim=-1), self.forward(homo_vecs, lumo_vecs, targets)

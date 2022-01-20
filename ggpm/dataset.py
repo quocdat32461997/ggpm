@@ -3,6 +3,8 @@ from torch.utils.data import Dataset
 from rdkit import Chem
 import os, random, gc
 import pickle
+import numpy as np
+from icecream import ic
 
 from ggpm.chemutils import get_leaves
 from ggpm.mol_graph import MolGraph
@@ -12,7 +14,7 @@ class MoleculeDataset(Dataset):
 
     def __init__(self, data, vocab, avocab, batch_size):
         safe_data = []
-        for mol_s in data:
+        for mol_s, homo, lumo in data:
             hmol = MolGraph(mol_s)
             ok = True
             for node, attr in hmol.mol_tree.nodes(data=True):
@@ -21,7 +23,7 @@ class MoleculeDataset(Dataset):
                 for i, s in attr['inter_label']:
                     ok &= (smiles, s) in vocab.vmap
             if ok:
-                safe_data.append(mol_s)
+                safe_data.append([mol_s, homo, lumo])
 
         print(f'After pruning {len(data)} -> {len(safe_data)}')
         self.batches = [safe_data[i: i + batch_size] for i in range(0, len(safe_data), batch_size)]
