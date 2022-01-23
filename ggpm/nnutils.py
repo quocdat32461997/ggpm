@@ -153,8 +153,15 @@ def to_cuda(inputs):
     return inputs.to(device)
 
 
-def gradient_update(vec, output, target):
+def property_grad_optimize(vecs, outputs, targets, latent_lr):
     # Function to perform gradient descent/ascent depending on
     # the value comparison between output and target
     # if output >= target, descent else ascent
-    return vec + self.latent_lr * vec.grad * (-1 if output >= target else 1)
+
+    # create mask of -1 and 1
+    # in shape of vecs
+    mask = -2 * (outputs >= targets).float()
+    mask = torch.ones_like(mask) + mask  # add mask of selected -2s + mask of all 1s
+    mask = torch.unsqueeze(mask, dim=-1)  # expand dim for broadcasting
+
+    return vecs + latent_lr * vecs.grad * mask

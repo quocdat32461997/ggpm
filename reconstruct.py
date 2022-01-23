@@ -26,7 +26,6 @@ if args.test_data.endswith('.csv'):
     # drop row w/ empty HOMO and LUMO
     args.test_data = args.test_data.dropna().reset_index(drop=True)
     args.test_data = args.test_data.to_numpy()
-    print(args.test_data[0:2], type(args.test_data))
 else:
     args.test_data = [[x, float(x), float(l)] for line in open(args.test_data) for x, h, l in line.strip("\r\n ").split()]
 
@@ -51,7 +50,7 @@ total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
 with torch.no_grad():
     for i,batch in enumerate(loader):
         orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
-        properties, dec_smiles = model.reconstruct(batch)
+        properties, dec_smiles = model.reconstruct(batch, args=args)
         for x, y, p in zip(orig_smiles, dec_smiles, properties):
             # display results
             print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, p[0], [1]))

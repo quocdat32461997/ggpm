@@ -3,7 +3,6 @@ import rdkit
 import rdkit.Chem as Chem
 import networkx as nx
 import numpy as np
-from icecream import ic
 
 from ggpm.chemutils import *
 from ggpm.nnutils import *
