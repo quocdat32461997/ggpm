@@ -137,7 +137,7 @@ class PropOptVAE(nn.Module):
                                                                       args=args)
 
         # extract property outputs
-        return property_outputs, self.decoder.decode((root_vecs, root_vecs, root_vecs),
+        return property_outputs, self.decoder.decode(mols, (root_vecs, root_vecs, root_vecs),
                                                      greedy=True, max_decode_step=150)
 
     def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
@@ -336,8 +336,8 @@ class PropertyOptimizer(nn.Module):
             lumo_vecs.retain_grad()
 
             # compute gradients
-            homo_loss.backward(retain_graph=True)
-            lumo_loss.backward(retain_graph=True)
+            homo_loss.backward()
+            lumo_loss.backward()
 
             # update latent vectors
             homo_vecs = property_grad_optimize(homo_vecs, homo_outputs, targets[0], self.latent_lr)

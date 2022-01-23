@@ -53,7 +53,7 @@ with torch.no_grad():
         properties, dec_smiles = model.reconstruct(batch, args=args)
         for x, y, p in zip(orig_smiles, dec_smiles, properties):
             # display results
-            print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, p[0], [1]))
+            print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, p[0], p[1]))
 
             # add to outputs
             outputs['original'].append(x)
