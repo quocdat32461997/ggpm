@@ -327,7 +327,6 @@ class PropertyOptimizer(nn.Module):
         lumo_vecs.requires_grad = True
 
         for _ in range(args.property_optim_step):
-            hv = homo_vecs
             # predict HOMOs and LUMOs
             homo_loss, lumo_loss, homo_outputs, lumo_outputs = self.forward(homo_vecs, lumo_vecs, targets)
 
