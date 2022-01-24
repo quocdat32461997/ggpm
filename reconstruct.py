@@ -49,17 +49,18 @@ total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
                              'homo': [], 'lumo': []}
 with torch.no_grad():
     for i,batch in enumerate(loader):
+        print(i, len(batch[0]), dataset.__len__())
         orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
         properties, dec_smiles = model.reconstruct(batch, args=args)
-        for x, y, p in zip(orig_smiles, dec_smiles, properties):
+        for x, y, h, l in zip(orig_smiles, dec_smiles, properties[0], properties[1]):
             # display results
-            print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, p[0], p[1]))
+            print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, h, l))
 
             # add to outputs
             outputs['original'].append(x)
             outputs['reconstructed'].append(y)
-            outputs['homo'].append(p[0])
-            outputs['lumo'].append(p[1])
+            outputs['homo'].append(h)
+            outputs['lumo'].append(l)
 
 # save outputs
 outputs = pd.DataFrame.from_dict(outputs)
