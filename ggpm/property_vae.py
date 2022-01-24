@@ -248,51 +248,6 @@ class PropertyOptimizer(nn.Module):
     def soft_optimize(self, homo_vecs, lumo_vecs, targets, args):
         # Function to optimize homo_vecs and lumo_vecs until the delta difference is hit
 
-        # cast delta and patience threshold to torch.float
-        delta = torch.tensor(args.property_delta, dtype=torch.float)
-        patience_threshold = torch.tensor(args.patience_threshold, dtype=torch.float)
-
-        for h_vec, l_vec, h_tar, l_tar, i in zip(homo_vecs, lumo_vecs, targets[0],
-                                                 targets[1], range(homo_vecs.shape[0])):
-            prev_loss, patience = 0, args.patience
-            # loop until patience hits 0 or total_loss less than delta to avoid infinite loop
-            while True and patience > 0:
-                # predict HOMOs and LUMOs
-                h_loss, l_loss, h_out, l_out = self.forward(h_vec, l_vec, (h_tar, l_tar))
-                total_loss = h_loss + l_loss
-
-                # compute gradients
-                h_loss.backward()
-                l_loss.backward()
-
-                # break if sum of loss <= delta
-                if total_loss <= delta: break
-
-                # update gradients if total loss larger than delta
-                h_vec = gradient_update(h_vec, h_loss, h_out, h_tar, self.latent_lr)
-                l_vec = gradient_update(l_vec, l_loss, l_out, l_tar, self.latent_lr)
-
-                # update patience to stop if loss change smaller than patience threshold
-                if abs(total_loss - prev_loss) <= patience_threshold:
-                    patience -= 1
-                else:  # reset patience
-                    patience = args.patience
-                # update prev_loss
-                prev_loss = total_loss
-
-            # assign vecs back
-            homo_vecs[i] = h_vec
-            lumo_vecs[i] = l_vec
-
-        # final prediction
-        return torch.cat([homo_vecs, lumo_vecs], dim=-1), self.forward(homo_vecs, lumo_vecs, targets)
-
-    def patience_optimize(self, homo_vecs, lumo_vecs, targets, args):
-        # Function to optimize homo_vecs and lumo_vecs until the delta difference is hit
-
-        # cast patience threshold to torch.float
-        #patience_threshold = torch.tensor(args.patience_threshold, dtype=torch.float)
-
         h_vecs, l_vecs = [], []
         for h_vec, l_vec, h_tar, l_tar in zip(homo_vecs, lumo_vecs, targets[0], targets[1]):
             # enable gradient tracking
@@ -304,6 +259,11 @@ class PropertyOptimizer(nn.Module):
             while patience > 0:
                 # predict HOMOs and LUMOs
                 h_loss, l_loss, h_out, l_out = self.forward(h_vec, l_vec, (h_tar, l_tar))
+                total_loss = h_loss + l_loss
+
+                # break if sum of loss <= delta
+                if total_loss <= args.property_delta:
+                    break
 
                 # enable grads for non-leaf tensors
                 h_vec.retain_grad()
@@ -318,8 +278,61 @@ class PropertyOptimizer(nn.Module):
                 l_vec = property_grad_optimize(l_vec, l_out, l_tar, self.latent_lr)
 
                 # update patience to stop if loss change smaller than patience threshold
+                if (abs(total_loss - prev_loss) / prev_loss) <= args.patience_threshold:
+                    patience -= 1
+                else:  # reset patience
+                    patience = args.patience
+
+                # update prev_loss
+                prev_loss = total_loss
+
+            # assign vecs back
+            h_vecs.append(h_vec)
+            l_vecs.append(l_vec)
+
+            # delete vecs and targets
+            del h_vec, l_vec, h_tar, l_tar
+
+        # free memory for vectors
+        del homo_vecs, lumo_vecs
+
+        # concat h_vecs and l_vecs
+        h_vecs = torch.stack(h_vecs, dim=0)
+        l_vecs = torch.stack(l_vecs, dim=0)
+
+        # final prediction
+        return torch.cat([h_vecs, l_vecs], dim=-1), self.forward(h_vecs, l_vecs, targets)
+
+    def patience_optimize(self, homo_vecs, lumo_vecs, targets, args):
+        # Function to optimize homo_vecs and lumo_vecs until the delta difference is hit
+
+        h_vecs, l_vecs = [], []
+        for h_vec, l_vec, h_tar, l_tar in zip(homo_vecs, lumo_vecs, targets[0], targets[1]):
+            # enable gradient tracking
+            h_vec.requires_grad = True
+            l_vec.requires_grad = True
+
+            # loop until patience hits 0 or total_loss less than delta to avoid infinite loop
+            prev_loss, patience = 0, args.patience
+            while patience > 0:
+                # predict HOMOs and LUMOs
+                h_loss, l_loss, h_out, l_out = self.forward(h_vec, l_vec, (h_tar, l_tar))
                 total_loss = h_loss + l_loss
-                if (abs(total_loss - prev_loss) / prev_loss) <= patience_threshold:
+
+                # enable grads for non-leaf tensors
+                h_vec.retain_grad()
+                l_vec.retain_grad()
+
+                # compute gradients
+                h_loss.backward()
+                l_loss.backward()
+
+                # update gradients if total loss larger than delta
+                h_vec = property_grad_optimize(h_vec, h_out, h_tar, self.latent_lr)
+                l_vec = property_grad_optimize(l_vec, l_out, l_tar, self.latent_lr)
+
+                # update patience to stop if loss change smaller than patience threshold
+                if (abs(total_loss - prev_loss) / prev_loss) <= args.patience_threshold:
                     patience -= 1
                 else:  # reset patience
                     patience = args.patience
