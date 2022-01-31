@@ -44,11 +44,12 @@ if args.saved_model:
         model = copy_model(model, PropertyVAE(args), args.saved_model, w_property=args.load_property_head)
         print('Successfully copied encoder-decoder weights.')
 
-for param in model.parameters():
-    if param.dim() == 1:
-        nn.init.constant_(param, 0)
-    else:
-        nn.init.xavier_normal_(param)
+else:
+    for param in model.parameters():
+        if param.dim() == 1:
+            nn.init.constant_(param, 0)
+        else:
+            nn.init.xavier_normal_(param)
 
 if args.load_epoch >= 0:
     model.load_state_dict(torch.load(args.save_dir + "/model." + str(args.load_epoch)))

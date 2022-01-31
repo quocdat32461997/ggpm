@@ -59,8 +59,8 @@ class PropertyVAE(torch.nn.Module):
         z_vecs = z_mean + torch.exp(z_log_var / 2) * epsilon if perturb else z_mean
         return z_vecs, kl_loss
 
-    def reconstruct(self, batch):
-        mols, graphs, tensors, _ = batch
+    def reconstruct(self, batch, args):
+        mols, graphs, tensors, _, homos, lumos = batch
         tree_tensors, _ = tensors = make_cuda(tensors)
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 

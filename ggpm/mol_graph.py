@@ -28,7 +28,7 @@ class MolGraph(object):
 
         self.mol_graph = self.build_mol_graph()  # build the atom-based graph of the given molecule
         self.clusters = self.find_clusters()
-        self.clusters, self.atom_cls = self.pool_clusters()
+        self.clusters, self.atom_cls = self.pool_clusters() # motif-based graph
         self.mol_tree = self.tree_decomp()
         self.order = self.label_tree()  # list of tuples (x, y, #) that # = 1 if parent-> child; and otherwise if # = 0
 
@@ -209,6 +209,7 @@ class MolGraph(object):
         tree_scope = tree_tensors[-1]
         graph_scope = graph_tensors[-1]
 
+        # add labels to tree_tensors
         max_cls_size = max([len(c) for x in mol_batch for c in x[0].clusters])
         cgraph = torch.zeros(len(tree_batchG) + 1, max_cls_size).int()
         for v, attr in tree_batchG.nodes(data=True):
@@ -219,6 +220,7 @@ class MolGraph(object):
             tree_batchG.nodes[v]['assm_cands'] = [add(x, offset) for x in attr['assm_cands']]
             cgraph[v, :len(cls)] = torch.IntTensor(cls)
 
+        # add order for generation
         all_orders = []
         for i, hmol in enumerate(mol_batch):
             hmol = hmol[0]  # get MolGraph instance only

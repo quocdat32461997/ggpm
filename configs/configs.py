@@ -7,23 +7,24 @@ from ggpm.vocab import common_atom_vocab
 class Configs(object):
     """Class to perform configs-parsing"""
     def __init__(self, path=None, args=None):
+        self.args = args
         if path is not None:
             assert path.endswith('.json') and os.path.exists(path) is True
-            self.from_json(open(path, 'r'))
+            with open(path, 'r') as file:
+                self.from_json(json.load(file))
         elif args is not None:
             assert isinstance(args, dict) is True
             self.from_json(args)
         else:
-            raise "Either path or args must be a valid value"
+            raise Exception("Either path or args must be a valid value")
 
     def to_json(self, path):
-        assert path.endswith('.json') is True
+        assert isinstance(path, str) and path.endswith('.json')
 
         with open(path, 'w') as file:
             json.dump(self.args, file)
 
-    def from_json(self, json_str):
-        configs = json.load(json_str)
+    def from_json(self, configs):
         self.__dict__.update(configs)
         self.args = {k: v for k,v in self.__dict__.items()} # save args
 

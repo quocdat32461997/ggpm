@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from rdkit.Chem import AllChem
+from rdkit import DataStructs
 
 is_cuda = torch.cuda.is_available()
 device = torch.device('cuda:0') if is_cuda else torch.device('cpu')
@@ -165,3 +167,18 @@ def property_grad_optimize(vecs, outputs, targets, latent_lr):
     mask = torch.unsqueeze(mask, dim=-1)  # expand dim for broadcasting
 
     return vecs + latent_lr * vecs.grad * mask
+
+
+def get_tanimoto_dist(mol_x, mol_y, radius=3, n_bits=2048):
+    # Measure the Tanimoto coefficient based on Morgan fingerprints
+    fp_x = AllChem.GetMorganFingerprintAsBitVect(mol_x, radius, nBits=n_bits)
+    fp_y = AllChem.GetMorganFingerprintAsBitVect(mol_y, radius, nBits=n_bits)
+    return round(DataStructs.TanimotoSimilarity(fp_x, fp_y), 3)
+
+
+def get_frechet_dist(mol_x, mol_y, radius=3, n_bits=2048):
+    # Measure the Frechet similarity based on Morgan fingerprints
+    fp_x = AllChem.GetMorganFingerprintAsBitVect(mol_x, radius, nBits=n_bits)
+    fp_y = AllChem.GetMorganFingerprintAsBitVect(mol_y, radius, nBits=n_bits)
+    # TO-DO: add frechet_dist formula
+    return None

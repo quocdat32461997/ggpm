@@ -24,7 +24,8 @@ args = Configs(path=parser.parse_args().path_to_config)
 if args.test_data.endswith('.csv'):
     args.test_data = pd.read_csv(args.test_data)
     # drop row w/ empty HOMO and LUMO
-    args.test_data = args.test_data.dropna().reset_index(drop=True)
+    if args.pretrained == False:
+        args.test_data = args.test_data.dropna().reset_index(drop=True)
     args.test_data = args.test_data.to_numpy()
 else:
     args.test_data = [[x, float(x), float(l)] for line in open(args.test_data) for x, h, l in line.strip("\r\n ").split()]
@@ -33,9 +34,9 @@ vocab = [x.strip("\r\n ").split() for x in open(args.vocab_)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x,y) for x,y,_ in vocab])
 
-model = to_cuda(PropOptVAE(args))
+model = to_cuda(PropertyVAE(args))
 
-model.load_state_dict(torch.load(args.saved_model,
+model.load_state_dict(torch.load(args.output_model,
                                  map_location=device))
 model.eval()
 
@@ -46,19 +47,25 @@ torch.manual_seed(args.seed)
 random.seed(args.seed)
 
 total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
-                             'homo': [], 'lumo': []}
+                             'org_homo': [], 'org_lumo': [], 'homo': [], 'lumo': []}
 with torch.no_grad():
     for i,batch in enumerate(loader):
         print(i, len(batch[0]), dataset.__len__())
         orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
-        properties, dec_smiles = model.reconstruct(batch, args=args)
+        preds = model.reconstruct(batch, args=args)
+        properties, dec_smiles = preds if isinstance(preds, tuple) else (([None] * len(preds), [None] * len(preds)), preds)
         for x, y, h, l in zip(orig_smiles, dec_smiles, properties[0], properties[1]):
+            # extract original labels
+            x, h_, l_ = x
+
             # display results
             print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, h, l))
 
             # add to outputs
             outputs['original'].append(x)
             outputs['reconstructed'].append(y)
+            outputs['org_homo'].append(h_)
+            outputs['org_lumo'].append(l_)
             outputs['homo'].append(h)
             outputs['lumo'].append(l)
 
