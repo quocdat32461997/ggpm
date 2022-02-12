@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 import moses
 import pandas as pd
 import argparse
+import pickle
 
 import rdkit
 from ggpm import *
@@ -48,12 +49,14 @@ random.seed(args.seed)
 
 total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
                              'org_homo': [], 'org_lumo': [], 'homo': [], 'lumo': []}
+logs = []
 with torch.no_grad():
     for i,batch in enumerate(loader):
         print(i, len(batch[0]), dataset.__len__())
         orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
-        preds = model.reconstruct(batch, args=args)
+        logs_, preds = model.reconstruct(batch, args=args)
         properties, dec_smiles = preds if isinstance(preds, tuple) else (([None] * len(preds), [None] * len(preds)), preds)
+        logs.extend(logs_)
         for x, y, h, l in zip(orig_smiles, dec_smiles, properties[0], properties[1]):
             # extract original labels
             x, h_, l_ = x
@@ -72,3 +75,6 @@ with torch.no_grad():
 # save outputs
 outputs = pd.DataFrame.from_dict(outputs)
 outputs.to_csv(args.output, index=False)
+
+with open('logs.pkl', 'wb') as file:
+    pickle.dump(logs, file)

@@ -704,6 +704,7 @@ class MotifDecoder(torch.nn.Module):
     def decode(self, mols, src_mol_vecs, greedy=True, max_decode_step=100, beam=5):
         src_root_vecs, src_tree_vecs, src_graph_vecs = src_mol_vecs
         batch_size = len(src_root_vecs)
+        results = [[] for _ in range(batch_size)]
 
         tree_batch = IncTree(batch_size, max_nodes=400, max_edges=500,
                              node_fdim=2, edge_fdim=3)
@@ -717,9 +718,19 @@ class MotifDecoder(torch.nn.Module):
         init_vecs = src_root_vecs if self.latent_size == self.hidden_size else self.W_root(src_root_vecs)
         batch_idx = self.itensor.new_tensor(range(batch_size))
         cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, batch_idx, init_vecs, None)
+        for r, cls, icls in zip(results, cls_scores, icls_scores):
+            r.append({'Top 5 super-root-idxs (aka blank roots that wont exist in the root fragments)': torch.sort(cls, descending=True, dim=-1)[1][:5]})
+
         root_cls = cls_scores.max(dim=-1)[1].to('cpu')
         icls_scores = icls_scores.to('cpu') + self.vocab.get_mask(root_cls)
+        for super_root_idx, icls, r in zip(root_cls, icls_scores, results):
+            r[-1]['super-root-idx'] = super_root_idx
+            scores, cands = torch.sort(icls, descending=True, dim=-1)
+            r[-1]['top-5-root-fragment-cands'] = [(self.vocab.get_ismiles(cand), score) for score, cand in
+                                                      zip(scores[:5], cands[:5])]
         root_cls, root_icls = root_cls.tolist(), icls_scores.max(dim=-1)[1].tolist()
+        for r, icls in zip(results, root_icls):
+            r[-1]['Attaching Fragment'] = (self.vocab.get_ismiles(icls))
 
         # add super root node and get super-root index
         super_root = tree_batch.add_node()
@@ -729,9 +740,11 @@ class MotifDecoder(torch.nn.Module):
             tree_batch.add_edge(super_root, root_idx)   # add edge of super-root and graph-root
             stack[bid].append(root_idx)     # add root to stack
 
-            root_smiles = self.vocab.get_ismiles(ilab)  # get next-mol smiles
+            root_smiles = self.vocab.get_ismiles(ilab)  # get root-mol smiles
             new_atoms, new_bonds, attached = graph_batch.add_mol(bid, root_smiles, [], 0)   # add next-mol to graph
             tree_batch.register_cgraph(root_idx, new_atoms, new_bonds, attached)    # add next-mol to tree
+        for r, mol in zip(results, graph_batch.get_mol()):
+            r[-1]['partial-graph'] = mol
 
         # invariance: tree_tensors is equal to inter_tensors (but inter_tensor's init_vec is 0)
         tree_tensors = tree_batch.get_tensors()
@@ -744,6 +757,10 @@ class MotifDecoder(torch.nn.Module):
         h[1: batch_size + 1] = init_vecs  # wiring root (only for tree, not int
 
         for t in range(max_decode_step):
+            # add results to next step
+            for r in results:
+                r.append({})
+
             # stop decoding if stack is empty
             batch_list = [bid for bid in range(batch_size) if len(stack[bid]) > 0]
             if len(batch_list) == 0: break
@@ -752,7 +769,7 @@ class MotifDecoder(torch.nn.Module):
             batch_idx = batch_idx.new_tensor(batch_list)
             cur_tree_nodes = [stack[bid][-1] for bid in batch_list]     # get node indices
             subtree = batch_idx.new_tensor(cur_tree_nodes), batch_idx.new_tensor([])        # tuple of node-idx and message-idx
-            # subgraph = batch_idx.new_tensor( tree_batch.get_cluster_nodes(cur_tree_nodes) ), batch_idx.new_tensor( tree_batch.get_cluster_edges(cur_tree_nodes) )
+            subgraph = batch_idx.new_tensor(tree_batch.get_cluster_nodes(cur_tree_nodes)), batch_idx.new_tensor( tree_batch.get_cluster_edges(cur_tree_nodes))
 
             # get latest subtree's representation
             htree = self.hmpn(tree_tensors, htree, subtree)
@@ -776,6 +793,7 @@ class MotifDecoder(torch.nn.Module):
                     new_edge = tree_batch.add_edge(stack[bid][-1], new_node, edge_feature)
                     stack[bid].append(new_node)
                     new_mess.append(new_edge)
+                    results[bid][-1]['Generate fragment'] = topo_preds[i]
                 else:
                     child = stack[bid].pop()
                     if len(stack[bid]) > 0:
@@ -809,6 +827,8 @@ class MotifDecoder(torch.nn.Module):
                 success = False
                 cls_beam = range(beam) if greedy else shuf_idx[i]
 
+                results[bid][-1]['top-5-inter-cands'] = [(self.vocab.get_smiles(x), self.vocab.get_ismiles(y), score) for x, y, score in
+                                                              zip(cls_topk[i], icls_topk[i], scores[i])]
                 for kk in cls_beam:  # try until one is chemically valid
                     if success: break
                     clab, ilab = cls_topk[i][kk], icls_topk[i][kk]
@@ -841,6 +861,7 @@ class MotifDecoder(torch.nn.Module):
                             new_atoms, new_bonds, attached = graph_batch.add_mol(bid, ismiles, inter_label, nth_child)
                             tree_batch.register_cgraph(new_node, new_atoms, new_bonds, attached)
                             tree_batch.update_attached(fa_node, inter_label)
+                            results[bid][-1]['Attaching Fragment'] = ismiles
                             success = True
                             break
                             #except Exception as e:
@@ -858,4 +879,7 @@ class MotifDecoder(torch.nn.Module):
                         edge_feature = batch_idx.new_tensor([child, stack[bid][-1], nth_child])
                         new_edge = tree_batch.add_edge(child, stack[bid][-1], edge_feature)
 
-        return graph_batch.get_mol()
+            # update partial graph
+            for mol, r in zip(graph_batch.get_mol(), results):
+                r[-1]['partial-graph'] = mol
+        return results, graph_batch.get_mol()
