@@ -288,9 +288,9 @@ class HierMPNDecoder(nn.Module):
         nth_child = self.itensor.new_tensor([nth_child] * len(cands.view(-1)))
         order_vecs = self.E_order.index_select(0, nth_child)
 
-        #cand_vecs = hgraph.node.index_select(0, cands.view(-1))
+        cand_vecs = hgraph.node.index_select(0, cands.view(-1))
         # print('icls_vecs', icls_vecs.size(), 'order_vecs', order_vecs.size(), 'cand_vecs', cand_vecs.size())
-        cand_vecs = torch.cat([icls_vecs, order_vecs], dim=-1)
+        cand_vecs = torch.cat([cand_vecs, icls_vecs, order_vecs], dim=-1)
         cand_vecs = self.matchNN(cand_vecs)
 
         if len(icls) == 2:
@@ -479,7 +479,7 @@ class MotifDecoder(torch.nn.Module):
             nn.Linear(hidden_size, vocab.size()[1])
         )
         self.matchNN = nn.Sequential(
-            nn.Linear(hidden_size + embed_size + MolGraph.MAX_POS, hidden_size),
+            nn.Linear(hidden_size + MolGraph.MAX_POS, hidden_size),
             nn.ReLU(),
         )
         self.W_assm = nn.Linear(hidden_size, latent_size)
