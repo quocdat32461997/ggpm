@@ -237,7 +237,7 @@ class HierMPNDecoder(nn.Module):
                 all_cls_preds.append((hmess[mess_idx], i, clab, ilab))  # cluster prediction using message
 
                 inter_label = tree_batch.nodes[yid]['inter_label']
-                inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label]
+                inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label] # for attach
                 inter_size = self.vocab.get_inter_size(ilab)
 
                 if len(tree_batch.nodes[xid]['cluster']) > 2:  # uncertainty occurs only when previous cluster is a ring
@@ -478,7 +478,7 @@ class MotifDecoder(torch.nn.Module):
             nn.Linear(hidden_size, vocab.size()[1])
         )
         self.matchNN = nn.Sequential(
-            nn.Linear(hidden_size + MolGraph.MAX_POS, hidden_size),
+            nn.Linear(hidden_size + embed_size + MolGraph.MAX_POS, hidden_size),
             nn.ReLU(),
         )
         self.W_assm = nn.Linear(hidden_size, latent_size)
@@ -531,11 +531,12 @@ class MotifDecoder(torch.nn.Module):
         att_vecs = att_vecs.sum(dim=1)
         return att_vecs if len(size) == 1 else att_vecs.view(size[0], size[1], -1)
 
-    def apply_tree_mask(self, tensors, cur):
+    def apply_tree_mask(self, tensors, cur, prev):
         # Get current tree
         fnode, fmess, agraph, bgraph, cgraph, scope = tensors
         agraph = agraph * index_select_ND(cur.emask, 0, agraph)
         bgraph = bgraph * index_select_ND(cur.emask, 0, bgraph)
+        cgraph = cgraph * index_select_ND(prev.vmask, 0, cgraph)
         return fnode, fmess, agraph, bgraph, cgraph, scope
 
     def get_topo_score(self, src_tree_vecs, batch_idx, topo_vecs):
@@ -568,7 +569,7 @@ class MotifDecoder(torch.nn.Module):
             assm_cxt = index_select_ND(src_graph_vecs, 0, batch_idx)
         return (self.W_assm(assm_vecs) * assm_cxt).sum(dim=-1)
 
-    def enum_attach(self, cands, icls, nth_child):
+    def enum_attach(self, hgraph, cands, icls, nth_child):
         cands = self.itensor.new_tensor(cands)
         # embed attachment configs from labels (or previous prediction)
         icls_vecs = self.itensor.new_tensor(icls * len(cands))
@@ -579,7 +580,8 @@ class MotifDecoder(torch.nn.Module):
         order_vecs = self.E_order.index_select(0, nth_child)
 
         # print('icls_vecs', icls_vecs.size(), 'order_vecs', order_vecs.size())
-        cand_vecs = torch.cat([icls_vecs, order_vecs], dim=-1)
+        cand_vecs = hgraph.node.index_select(0, cands.view(-1)) # get atom-embed of attachment points
+        cand_vecs = torch.cat([cand_vecs, icls_vecs, order_vecs], dim=-1)
         cand_vecs = self.matchNN(cand_vecs)
 
         if len(icls) == 2:
@@ -588,15 +590,20 @@ class MotifDecoder(torch.nn.Module):
 
     def forward(self, mols, src_mol_vecs, graphs, tensors, orders):
         batch_size = len(orders)
-        tree_batch, _ = graphs
-        tree_tensors, _ = tensors
+        tree_batch, graph_batch = graphs
+        tree_tensors, graph_tensors = tensors
+        inter_tensors = tree_tensors
 
         # extract root latent vector and reshape by a Linear layer if needed
         src_root_vecs, src_tree_vecs, src_graph_vecs = src_mol_vecs
         init_vecs = src_root_vecs if self.latent_size == self.hidden_size else self.W_root(src_root_vecs)
 
         htree, tree_tensors = self.init_decoder_state(tree_batch, tree_tensors, init_vecs)
-
+        hgraph = HTuple(
+            mess=self.rnn_cell.get_init_state(graph_tensors[1]),
+            vmask=self.itensor.new_zeros(graph_tensors[0].size(0)),
+            emask=self.itensor.new_zeros(graph_tensors[1].size(0))
+        )
         #  prediction backtrace statuses, motifs
         all_topo_preds, all_cls_preds, all_assm_preds = [], [], []
 
@@ -631,7 +638,7 @@ class MotifDecoder(torch.nn.Module):
             htree.emask.scatter_(0, subtree[1], 1)
 
             # get last subtree's representation
-            cur_tree_tensors = self.apply_tree_mask(tree_tensors, htree)
+            cur_tree_tensors = self.apply_tree_mask(tree_tensors, htree, hgraph)
             htree = self.hmpn(cur_tree_tensors, htree, subtree)
 
             new_atoms = []
@@ -651,9 +658,9 @@ class MotifDecoder(torch.nn.Module):
                 clab, ilab = self.vocab[tree_batch.nodes[yid]['label']]
                 mess_idx = tree_batch[xid][yid]['mess_idx']
                 hmess = self.rnn_cell.get_hidden_state(htree.mess)
-                all_cls_preds.append((hmess[mess_idx], i, clab, ilab))  # cluster prediction using message
+                all_cls_preds.append((hmess[mess_idx], i, clab, ilab))  # motif prediction using message
 
-                # get connection labels of 2 motifs
+                # get connection labels of 2 motifs (aka attachment points)
                 inter_label = tree_batch.nodes[yid]['inter_label']
                 inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label]
 
@@ -666,14 +673,14 @@ class MotifDecoder(torch.nn.Module):
                         cands = tree_batch.nodes[yid]['assm_cands']
                         icls = list(zip(*inter_label))[1]
                         # print(t, nth_child, len(cands), len(icls))
-                        cand_vecs = self.enum_attach(cands, icls, nth_child)
+                        cand_vecs = self.enum_attach(hgraph, cands, icls, nth_child)
 
                         if len(cand_vecs) < max_cls_size:
                             pad_len = max_cls_size - len(cand_vecs)
                             cand_vecs = F.pad(cand_vecs, (0, 0, 0, pad_len))
 
                         # batch_idx = hgraph.emask.new_tensor( [i] * max_cls_size )
-                        batch_idx = torch.tensor([i] * max_cls_size, dtype=htree.emask.dtype)
+                        batch_idx = hgraph.emask.new_tensor([i] * max_cls_size)
                         all_assm_preds.append((cand_vecs, batch_idx, 0))  # the label is always the first of assm_cands
                 except Exception as e:
                     print('batch-idx', mols[i])

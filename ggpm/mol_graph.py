@@ -259,9 +259,9 @@ class MolGraph(object):
             # get edges
             for u, v, attr in G.edges(data='label'):
                 if type(attr) is tuple:
-                    fmess.append((u, v, attr[0], attr[1]))
+                    fmess.append((u, v, attr[0], attr[1])) # for graph, attr = bond-type
                 else:
-                    fmess.append((u, v, attr, 0))
+                    fmess.append((u, v, attr, 0)) # for tensor
                 edge_dict[(u, v)] = eid = len(edge_dict) + 1
                 G[u][v]['mess_idx'] = eid
                 agraph[v].append(eid)

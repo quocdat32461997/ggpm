@@ -68,7 +68,7 @@ class HierMPNEncoder(nn.Module):
         )
         # feature of attachments
         self.W_i = nn.Sequential(
-            nn.Linear(embed_size + hidden_size, hidden_size),
+            nn.Linear(embed_size * 2, hidden_size),
             nn.ReLU(),
             nn.Dropout(dropout)
         )
@@ -76,7 +76,7 @@ class HierMPNEncoder(nn.Module):
         self.E_a = to_cuda(torch.eye(atom_size))  # one-hot embedding of common atoms
         self.E_b = to_cuda(torch.eye(len(MolGraph.BOND_LIST)))  # one-hot embedding of bonds
         self.E_apos = to_cuda(torch.eye(MolGraph.MAX_POS))  # one-hot embedding of atom position encodings
-        self.E_pos = to_cuda(torch.eye(MolGraph.MAX_POS))  # one-hot embedding of position encodings
+        self.E_pos = to_cuda(torch.eye(MolGraph.MAX_POS))  # one-hot embedding of attachment-position encodings
 
         self.W_root = nn.Sequential(
             nn.Linear(hidden_size * 2, hidden_size),
@@ -97,7 +97,7 @@ class HierMPNEncoder(nn.Module):
 
     def embed_inter(self, tree_tensors, hatom):
         fnode, fmess, agraph, bgraph, cgraph, _ = tree_tensors
-        finput = self.E_i(fnode[:, 1])  # atom attachment embedding
+        finput = self.E_i(fnode[:, 1])  # motif-level attachment embedding
 
         hnode = index_select_ND(hatom, 0, cgraph).sum(dim=1)
         hnode = self.W_i(torch.cat([finput, hnode], dim=-1))  # attachment node feature
@@ -272,7 +272,7 @@ class MotifEncoder(torch.nn.Module):
 
         # motif
         self.W_c = nn.Sequential(
-            nn.Linear(embed_size, hidden_size),
+            nn.Linear(embed_size + hidden_size, hidden_size),
             nn.ReLU(), nn.Dropout(dropout)
         )
         # root
@@ -282,11 +282,12 @@ class MotifEncoder(torch.nn.Module):
         )
 
         # one-hot attachment connectivity embedding
+        self.E_a = to_cuda(torch.eye(atom_size))  # one-hot embedding of common atoms
         self.E_pos = to_cuda(torch.eye(MolGraph.MAX_POS))
 
         # motif layer
         self.tree_encoder = MPNEncoder(rnn_type,
-                                       embed + MolGraph.MAX_POS,
+                                       hidden_size + MolGraph.MAX_POS,
                                        hidden_size,
                                        hidden_size,
                                        depthT,
@@ -294,6 +295,7 @@ class MotifEncoder(torch.nn.Module):
 
     def tie_embedding(self, other):
         self.E_c, self.E_i = other.E_c, other.E_i
+        self.E_a = other.E_a
 
     def embed_tree(self, tree_tensors):
         # Currently, consider motif-embedding and attachments' position encoding
@@ -302,20 +304,12 @@ class MotifEncoder(torch.nn.Module):
 
         # embed motif and attachment
         hnode = self.E_c(fnode[:, 0])
-        #hnode = self.W_c(hnode)
+        finter = self.E_i(fnode[:, 1])  # motif-level attachment embedding
+        hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
+
+        # get hmess
         hmess = hnode.index_select(index=fmess[:, 0], dim=0) # select hnode for multiple connections
-
-        # embed attachment
-        #attachment_f = self.E_i(fnode[:, 1])
-        #attachment_f = attachment_f.index_sect(index=fmess[:, 0], dim=0)
-
-
-        # position encoding of attachment
-        pos_vecs = self.E_pos.index_select(dim=0,
-                                           index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
-
-        # embed message
-        #mess_f = attachment_f.index_select(dim=0, index=fmess[:, 0])
+        pos_vecs = self.E_pos.index_select(dim=0, index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
         hmess = torch.cat([hmess, pos_vecs], axis=-1)
 
         return hnode, hmess, agraph, bgraph
@@ -376,15 +370,15 @@ class IncEncoder(MotifEncoder):
 
         # embed motif
         hnode = self.E_c(fnode[:, 0])
-
         # embed attachment
-        #attachment_f = self.E_i(fnode[:, 1])
+        finter = self.E_i(fnode[:, 1])
+        hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
 
         if len(submess) == 0: # if no parent-child pair
             hmess = fmess
         else:
             node_buf = torch.zeros(num_nodes, self.hidden_size, device=fmess.device)
-            node_buf = index_scatter(node_f, node_buf, subnode)
+            node_buf = index_scatter(hnode, node_buf, subnode)
             hmess = node_buf.index_select(index=fmess[:, 0], dim=0)
             pos_vecs = self.E_pos.index_select(0, fmess[:, 2])
             hmess = torch.cat([hmess, pos_vecs], dim=-1)
