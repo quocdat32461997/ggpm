@@ -286,9 +286,9 @@ class HierMPNDecoder(nn.Module):
         nth_child = self.itensor.new_tensor([nth_child] * len(cands.view(-1)))
         order_vecs = self.E_order.index_select(0, nth_child)
 
-        cand_vecs = hgraph.node.index_select(0, cands.view(-1))
+        #cand_vecs = hgraph.node.index_select(0, cands.view(-1))
         # print('icls_vecs', icls_vecs.size(), 'order_vecs', order_vecs.size(), 'cand_vecs', cand_vecs.size())
-        cand_vecs = torch.cat([cand_vecs, icls_vecs, order_vecs], dim=-1)
+        cand_vecs = torch.cat([icls_vecs, order_vecs], dim=-1)
         cand_vecs = self.matchNN(cand_vecs)
 
         if len(icls) == 2:
@@ -665,26 +665,24 @@ class MotifDecoder(torch.nn.Module):
                 inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label]
 
                 # graph prediction = inter-candidate prediction
-                try:
-                    if len(tree_batch.nodes[xid][
-                               'cluster']) > 2:  # uncertainty occurs only when previous cluster is a ring
-                        nth_child = tree_batch[yid][xid][
-                            'label']  # must be yid -> xid (graph order labeling is different from tree)
-                        cands = tree_batch.nodes[yid]['assm_cands']
-                        icls = list(zip(*inter_label))[1]
-                        # print(t, nth_child, len(cands), len(icls))
-                        cand_vecs = self.enum_attach(hgraph, cands, icls, nth_child)
+                #try:
+                if len(tree_batch.nodes[xid]['cluster']) > 2:  # uncertainty occurs only when previous cluster is a ring
+                    nth_child = tree_batch[yid][xid]['label']  # must be yid -> xid (graph order labeling is different from tree)
+                    cands = tree_batch.nodes[yid]['assm_cands']
+                    icls = list(zip(*inter_label))[1]
+                    # print(t, nth_child, len(cands), len(icls))
+                    cand_vecs = self.enum_attach(hgraph, cands, icls, nth_child)
 
-                        if len(cand_vecs) < max_cls_size:
-                            pad_len = max_cls_size - len(cand_vecs)
-                            cand_vecs = F.pad(cand_vecs, (0, 0, 0, pad_len))
+                    if len(cand_vecs) < max_cls_size:
+                        pad_len = max_cls_size - len(cand_vecs)
+                        cand_vecs = F.pad(cand_vecs, (0, 0, 0, pad_len))
 
-                        # batch_idx = hgraph.emask.new_tensor( [i] * max_cls_size )
-                        batch_idx = hgraph.emask.new_tensor([i] * max_cls_size)
-                        all_assm_preds.append((cand_vecs, batch_idx, 0))  # the label is always the first of assm_cands
-                except Exception as e:
-                    print('batch-idx', mols[i])
-                    continue
+                    # batch_idx = hgraph.emask.new_tensor( [i] * max_cls_size )
+                    batch_idx = hgraph.emask.new_tensor([i] * max_cls_size)
+                    all_assm_preds.append((cand_vecs, batch_idx, 0))  # the label is always the first of assm_cands
+                #except Exception as e:
+                #    print('batch-idx', mols[i])
+                #    continue
 
         topo_vecs, batch_idx, topo_labels = zip_tensors(all_topo_preds)
         topo_scores = self.get_topo_score(src_tree_vecs, to_cuda(batch_idx), topo_vecs)
