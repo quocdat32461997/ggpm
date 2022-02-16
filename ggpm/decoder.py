@@ -753,11 +753,11 @@ class MotifDecoder(torch.nn.Module):
 
         # invariance: tree_tensors is equal to inter_tensors (but inter_tensor's init_vec is 0)
         tree_tensors = tree_batch.get_tensors()
-        # graph_tensors = graph_batch.get_tensors()
+        graph_tensors = graph_batch.get_tensors()
 
         htree = HTuple(mess=self.rnn_cell.get_init_state(tree_tensors[1]))  # similar to init_decoder_state
         # hinter = HTuple(mess=self.rnn_cell.get_init_state(tree_tensors[1]))
-        # hgraph = HTuple(mess=self.rnn_cell.get_init_state(graph_tensors[1]))
+        hgraph = HTuple(mess=self.rnn_cell.get_init_state(graph_tensors[1]))
         h = self.rnn_cell.get_hidden_state(htree.mess)
         h[1: batch_size + 1] = init_vecs  # wiring root (only for tree, not int
 
@@ -852,7 +852,7 @@ class MotifDecoder(torch.nn.Module):
                         nth_child = tree_batch.graph.in_degree(fa_node)
                         icls = [self.vocab[(smiles, x)][1] for x in anchor_smiles]
                         cands = inter_cands if len(attach_points) <= 2 else [(x[0], x[-1]) for x in inter_cands]
-                        cand_vecs = self.enum_attach(cands, icls, nth_child)
+                        cand_vecs = self.enum_attach(hgraph, cands, icls, nth_child)
 
                         batch_idx = batch_idx.new_tensor([bid] * len(inter_cands))
                         assm_scores = self.get_assm_score(src_graph_vecs, batch_idx, cand_vecs).tolist()
