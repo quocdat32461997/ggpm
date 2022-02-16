@@ -272,7 +272,7 @@ class MotifEncoder(torch.nn.Module):
 
         # motif
         self.W_c = nn.Sequential(
-            nn.Linear(embed_size, hidden_size),
+            nn.Linear(embed_size + hidden_size, hidden_size),
             nn.ReLU(), nn.Dropout(dropout)
         )
         # root
@@ -287,7 +287,7 @@ class MotifEncoder(torch.nn.Module):
 
         # motif layer
         self.tree_encoder = MPNEncoder(rnn_type,
-                                       embed_size + MolGraph.MAX_POS,
+                                       hidden_size + MolGraph.MAX_POS,
                                        hidden_size,
                                        hidden_size,
                                        depthT,
@@ -304,20 +304,12 @@ class MotifEncoder(torch.nn.Module):
 
         # embed motif and attachment
         hnode = self.E_c(fnode[:, 0])
-        #hnode = self.W_c(hnode)
+        finter = self.E_i(fnode[:, 1])  # motif-level attachment embedding
+        hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
+
+        # get hmess
         hmess = hnode.index_select(index=fmess[:, 0], dim=0) # select hnode for multiple connections
-
-        # embed attachment
-        #attachment_f = self.E_i(fnode[:, 1])
-        #attachment_f = attachment_f.index_sect(index=fmess[:, 0], dim=0)
-
-
-        # position encoding of attachment
-        pos_vecs = self.E_pos.index_select(dim=0,
-                                           index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
-
-        # embed message
-        #mess_f = attachment_f.index_select(dim=0, index=fmess[:, 0])
+        pos_vecs = self.E_pos.index_select(dim=0, index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
         hmess = torch.cat([hmess, pos_vecs], axis=-1)
 
         return hnode, hmess, agraph, bgraph
@@ -378,10 +370,9 @@ class IncEncoder(MotifEncoder):
 
         # embed motif
         hnode = self.E_c(fnode[:, 0])
-
         # embed attachment
-        #hmess = self.E_i(fnode[:, 1])
-        #hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
+        finter = self.E_i(fnode[:, 1])
+        hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
 
         if len(submess) == 0: # if no parent-child pair
             hmess = fmess
