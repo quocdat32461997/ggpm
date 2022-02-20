@@ -370,18 +370,15 @@ class IncEncoder(MotifEncoder):
 
         # embed motif
         hnode = self.E_c(fnode[:, 0])
-        # embed attachment
-        finter = self.E_i(fnode[:, 1])
-        hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
 
-        if len(submess) == 0: # if no parent-child pair
+        if len(submess) == 0:  # if no parent-child pair
             hmess = fmess
         else:
             node_buf = torch.zeros(num_nodes, self.hidden_size, device=fmess.device)
             node_buf = index_scatter(hnode, node_buf, subnode)
-            hmess = node_buf.index_select(index=fmess[:, 0], dim=0)
+            mess_f = node_buf.index_select(index=fmess[:, 0], dim=0)
             pos_vecs = self.E_pos.index_select(0, fmess[:, 2])
-            hmess = torch.cat([hmess, pos_vecs], dim=-1)
+            hmess = torch.cat([mess_f, pos_vecs], dim=-1)
 
         return hnode, hmess, agraph, bgraph
 
