@@ -271,10 +271,10 @@ class MotifEncoder(torch.nn.Module):
         )
 
         # motif
-        self.W_c = nn.Sequential(
-            nn.Linear(embed_size + hidden_size, hidden_size),
-            nn.ReLU(), nn.Dropout(dropout)
-        )
+        #self.W_c = nn.Sequential(
+        #    nn.Linear(embed_size + hidden_size, hidden_size),
+        #    nn.ReLU(), nn.Dropout(dropout)
+        #)
         # root
         self.W_root = nn.Sequential(
             nn.Linear(hidden_size * 2, hidden_size),
@@ -304,11 +304,10 @@ class MotifEncoder(torch.nn.Module):
 
         # embed motif and attachment
         hnode = self.E_c(fnode[:, 0])
-        finter = self.E_i(fnode[:, 1])  # motif-level attachment embedding
-        hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
+        hmess = self.E_i(fnode[:, 1])  # motif-level attachment embedding
 
         # get hmess
-        hmess = hnode.index_select(index=fmess[:, 0], dim=0) # select hnode for multiple connections
+        hmess = hmess.index_select(index=fmess[:, 0], dim=0) # select hnode for multiple connections
         pos_vecs = self.E_pos.index_select(dim=0, index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
         hmess = torch.cat([hmess, pos_vecs], axis=-1)
 
@@ -371,8 +370,8 @@ class IncEncoder(MotifEncoder):
         # embed motif
         hnode = self.E_c(fnode[:, 0])
         # embed attachment
-        finter = self.E_i(fnode[:, 1])
-        hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
+        #hmess = self.E_i(fnode[:, 1])
+        #hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
 
         if len(submess) == 0: # if no parent-child pair
             hmess = fmess

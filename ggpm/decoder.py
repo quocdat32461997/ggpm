@@ -1523,7 +1523,7 @@ class MotifSchedulingDecoder(torch.nn.Module):
                             new_atoms, new_bonds, attached = graph_batch.add_mol(bid, ismiles, inter_label, nth_child)
                             tree_batch.register_cgraph(new_node, new_atoms, new_bonds, attached)
                             tree_batch.update_attached(fa_node, inter_label)
-                            results[bid][-1]['Attaching Fragment'] = ismiles
+                            results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points)
                             success = True
                             break
                             #except Exception as e:
