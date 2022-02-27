@@ -277,7 +277,7 @@ class MotifEncoder(torch.nn.Module):
         #)
         # root
         self.W_root = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size*2, hidden_size),
             nn.Tanh()  # root activation is tanh
         )
 
