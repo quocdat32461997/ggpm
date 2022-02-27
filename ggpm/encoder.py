@@ -271,13 +271,13 @@ class MotifEncoder(torch.nn.Module):
         )
 
         # motif
-        self.W_c = nn.Sequential(
-            nn.Linear(embed_size + hidden_size, hidden_size),
-            nn.ReLU(), nn.Dropout(dropout)
-        )
+        #self.W_c = nn.Sequential(
+        #    nn.Linear(embed_size + hidden_size, hidden_size),
+        #    nn.ReLU(), nn.Dropout(dropout)
+        #)
         # root
         self.W_root = nn.Sequential(
-            nn.Linear(hidden_size * 2, hidden_size),
+            nn.Linear(hidden_size, hidden_size),
             nn.Tanh()  # root activation is tanh
         )
 
@@ -303,9 +303,7 @@ class MotifEncoder(torch.nn.Module):
         fnode, fmess, agraph, bgraph, cgraph, _ = tree_tensors
 
         # embed motif and attachment
-        hnode = self.E_c(fnode[:, 0])
-        finter = self.E_i(fnode[:, 1])  # motif-level attachment embedding
-        hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
+        hnode = self.E_i(fnode[:, 1])  # motif-level attachment embedding
 
         # get hmess
         hmess = hnode.index_select(index=fmess[:, 0], dim=0) # select hnode for multiple connections
@@ -345,7 +343,11 @@ class IncEncoder(MotifEncoder):
     def __init__(self, vocab, avocab, rnn_type, embed_size, hidden_size, depthT, depthG, dropout):
         super(IncEncoder, self).__init__(vocab, avocab, rnn_type, embed_size, hidden_size, depthT,
                                          depthG, dropout)
-        self.tree_encoder = IncMPNEncoder(rnn_type, embed_size + MolGraph.MAX_POS, hidden_size, hidden_size, depthT,
+        self.tree_encoder = IncMPNEncoder(rnn_type,
+                                          embed_size + MolGraph.MAX_POS,
+                                          hidden_size,
+                                          hidden_size,
+                                          depthT,
                                           dropout)
         del self.W_root
 
@@ -369,7 +371,7 @@ class IncEncoder(MotifEncoder):
         fnode, fmess, agraph, bgraph, cgraph, _ = self.get_sub_tensor(tree_tensors, subtree)
 
         # embed motif
-        hnode = self.E_c(fnode[:, 0])
+        hnode = self.E_i(fnode[:, 1])
 
         if len(submess) == 0:  # if no parent-child pair
             hmess = fmess
