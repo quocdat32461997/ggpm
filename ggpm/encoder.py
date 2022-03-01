@@ -295,7 +295,7 @@ class MotifEncoder(torch.nn.Module):
         fnode, fmess, agraph, bgraph, cgraph, _ = tree_tensors
 
         # embed motif
-        node_f = self.E_c(fnode[:, 0])
+        #node_f = self.E_c(fnode[:, 0])
 
         # embed attachment
         attachment_f = self.E_i(fnode[:, 1])
@@ -308,7 +308,7 @@ class MotifEncoder(torch.nn.Module):
         mess_f = attachment_f.index_select(dim=0, index=fmess[:, 0])
         mess_f = torch.cat([mess_f, pos_vecs], axis=-1)
 
-        return node_f, mess_f, agraph, bgraph
+        return attachment_f, mess_f, agraph, bgraph
 
     def embed_root(self, hmess, tree_tensors, roots):
         # Function to embed root motif
@@ -365,21 +365,21 @@ class IncEncoder(MotifEncoder):
         fnode, fmess, agraph, bgraph, cgraph, _ = self.get_sub_tensor(tree_tensors, subtree)
 
         # embed motif
-        node_f = self.E_c(fnode[:, 0])
+        #node_f = self.E_c(fnode[:, 0])
 
         # embed attachment
-        #attachment_f = self.E_i(fnode[:, 1])
+        attachment_f = self.E_i(fnode[:, 1])
 
         if len(submess) == 0: # if no parent-child pair
             mess_f = fmess
         else:
             node_buf = torch.zeros(num_nodes, self.hidden_size, device=fmess.device)
-            node_buf = index_scatter(node_f, node_buf, subnode)
+            node_buf = index_scatter(attachment_f, node_buf, subnode)
             mess_f = node_buf.index_select(index=fmess[:, 0], dim=0)
             pos_vecs = self.E_pos.index_select(0, fmess[:, 2])
             mess_f = torch.cat([mess_f, pos_vecs], dim=-1)
 
-        return node_f, mess_f, agraph, bgraph
+        return attachment_f, mess_f, agraph, bgraph
 
     def forward(self, tree_tensors, htree, subtree):
         num_tree_nodes = tree_tensors[0].size(0)
