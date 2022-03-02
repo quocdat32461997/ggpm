@@ -7,7 +7,7 @@
     "vocab_": "trio_polymer_vocab.txt",
     "atom_vocab_": null,
     "save_dir": "./ckpt/motif_chem_trio_pretrained_w_tie_embedding_attachment_only_v2",
-    "output_model": "./ckpt/motif_chem_trio_pretrained_wo_tie_embedding_attachment_only_v2/model.19",
+    "output_model": "./ckpt/motif_chem_trio_pretrained_w_tie_embedding_attachment_only_v2/model.19",
     "load_encoder_only": false,
     "load_property_head": false,
     "load_epoch": -1,
