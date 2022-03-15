@@ -150,11 +150,13 @@ class MolGraph(object):
             # find intersecting atoms between child and parent's clusters
             inter_atoms = set(cls) & set(self.clusters[pa[i]]) if pa[i] >= 0 else set([0])
             # find inter-label
+            # cmol - motif
+            # inter_label - list of (inter-label atom, smiles of marked inter-label atoms)
             cmol, inter_label = get_inter_label(mol, cls, inter_atoms, self.atom_cls)
 
-            tree.nodes[i]['ismiles'] = ismiles = get_smiles(cmol)
-            tree.nodes[i]['inter_label'] = inter_label
-            tree.nodes[i]['smiles'] = smiles = get_smiles(set_atommap(cmol))
+            tree.nodes[i]['ismiles'] = ismiles = get_smiles(cmol) # motif with marked inter-label
+            tree.nodes[i]['inter_label'] = inter_label # list of (inter-label atom, smiles of marked inter-label atoms)
+            tree.nodes[i]['smiles'] = smiles = get_smiles(set_atommap(cmol)) # smiles of motif
             tree.nodes[i]['label'] = (smiles, ismiles) if len(cls) > 1 else (
                 smiles, smiles)  # edge's label - tuple(smiles, index-smiles)
             tree.nodes[i]['cluster'] = cls

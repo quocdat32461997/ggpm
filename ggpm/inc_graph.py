@@ -167,13 +167,18 @@ class IncGraph(IncBase):
     #validity check function
     def try_add_mol(self, batch_idx, smiles, inter_label):
         emol = get_mol(smiles)
+
+        # check if sub-molecule and next-motif share the same attachment points
         for x,y in inter_label:
             if not atom_equal(self.mol.GetAtomWithIdx(x), emol.GetAtomWithIdx(y)):
                 return False
 
+        # create attachment-map of common atoms
         atom_map = {y : x for x,y in inter_label}
         new_atoms, new_bonds = [], []
 
+        # if atom in potential motif not in atom-map,
+        # collect new atom and update atom-map with new atoms
         for atom in emol.GetAtoms(): #atoms must be inserted in order given by emol.GetAtoms() (for rings assembly)
             if atom.GetIdx() not in atom_map: 
                 new_atom = copy_atom(atom)
@@ -182,6 +187,10 @@ class IncGraph(IncBase):
                 atom_map[atom.GetIdx()] = idx
                 new_atoms.append(idx)
 
+        # check valid
+        # for each bond in potential motif
+        # if self-loop -> false (error)
+        # otherwise, update new bond to sub-molecule with bont-type
         valid = True
         for bond in emol.GetBonds():
             a1 = atom_map[bond.GetBeginAtom().GetIdx()]
@@ -194,6 +203,8 @@ class IncGraph(IncBase):
                 self.mol.AddBond(a1, a2, bond_type)
                 new_bonds.append( (a1,a2) )
 
+        # if the potential-motif has attachment-points only
+        # then, not a valid motif
         if valid: 
             tmp_mol = get_sub_mol(self.mol, self.batch[batch_idx] + new_atoms)
             tmp_mol = sanitize(tmp_mol, kekulize=False)

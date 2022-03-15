@@ -34,7 +34,7 @@ vocab = [x.strip("\r\n ").split() for x in open(args.vocab_)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x,y) for x,y,_ in vocab])
 
-model = to_cuda(PropertyVAE(args))
+model = to_cuda(PropOptVAE(args))
 
 model.load_state_dict(torch.load(args.output_model,
                                  map_location=device))
@@ -45,12 +45,11 @@ loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate
 
 torch.manual_seed(args.seed)
 random.seed(args.seed)
-
+print('test size', len(args.test_data))
 total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
                              'org_homo': [], 'org_lumo': [], 'homo': [], 'lumo': []}
 with torch.no_grad():
     for i,batch in enumerate(loader):
-        print(i, len(batch[0]), dataset.__len__())
         orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
         preds = model.reconstruct(batch, args=args)
         properties, dec_smiles = preds if isinstance(preds, tuple) else (([None] * len(preds), [None] * len(preds)), preds)

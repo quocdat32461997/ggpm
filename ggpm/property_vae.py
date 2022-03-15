@@ -133,8 +133,11 @@ class PropOptVAE(nn.Module):
         root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
 
         # find new latent vector that optimize HOMO & LUMO properties
-        root_vecs, _, property_outputs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
-                                                                      args=args)
+        #root_vecs, _, property_outputs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
+        #                                                              args=args)
+        property_outputs = self.property_optim.predict(homo_vecs=root_vecs[:, :self.property_hidden_size],
+                                                                     lumo_vecs=root_vecs[:, self.property_hidden_size:])
+
 
         # extract property outputs
         return property_outputs, self.decoder.decode(mols, (root_vecs, root_vecs, root_vecs),
