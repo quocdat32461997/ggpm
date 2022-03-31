@@ -1,3 +1,6 @@
 [submodule "hg2g"]
 	path = hg2g
 	url = https://github.com/wengong-jin/hgraph2graph
+[submodule "torchtools"]
+	path = torchtools
+	url = git@github.com:quocdat32461997/torchtools.git

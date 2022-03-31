@@ -29,7 +29,7 @@
     "epoch": 20,
     "anneal_rate": 0.9,
     "print_iter": 50,
-    "eval_iter": 750,
+    "eval_iter": 250,
     "save_iter": -1,
     "seed": 1,
     "optimize_type": "soft",
