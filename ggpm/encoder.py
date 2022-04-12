@@ -271,10 +271,10 @@ class MotifEncoder(torch.nn.Module):
         )
 
         # motif
-        #self.W_c = nn.Sequential(
-        #    nn.Linear(embed_size + hidden_size, hidden_size),
-        #    nn.ReLU(), nn.Dropout(dropout)
-        #)
+        self.W_c = nn.Sequential(
+            nn.Linear(embed_size, hidden_size),
+            nn.ReLU(), nn.Dropout(dropout)
+        )
         # root
         self.W_root = nn.Sequential(
             nn.Linear(hidden_size * 2, hidden_size),
@@ -287,7 +287,7 @@ class MotifEncoder(torch.nn.Module):
 
         # motif layer
         self.tree_encoder = MPNEncoder(rnn_type,
-                                       hidden_size + MolGraph.MAX_POS,
+                                       embed_size + MolGraph.MAX_POS,
                                        hidden_size,
                                        hidden_size,
                                        depthT,
@@ -304,11 +304,20 @@ class MotifEncoder(torch.nn.Module):
 
         # embed motif and attachment
         hnode = self.E_c(fnode[:, 0])
-        hmess = self.E_i(fnode[:, 1])  # motif-level attachment embedding
+        #hnode = self.W_c(hnode)
+        hmess = hnode.index_select(index=fmess[:, 0], dim=0) # select hnode for multiple connections
 
-        # get hmess
-        hmess = hmess.index_select(index=fmess[:, 0], dim=0) # select hnode for multiple connections
-        pos_vecs = self.E_pos.index_select(dim=0, index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
+        # embed attachment
+        #attachment_f = self.E_i(fnode[:, 1])
+        #attachment_f = attachment_f.index_sect(index=fmess[:, 0], dim=0)
+
+
+        # position encoding of attachment
+        pos_vecs = self.E_pos.index_select(dim=0,
+                                           index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
+
+        # embed message
+        #mess_f = attachment_f.index_select(dim=0, index=fmess[:, 0])
         hmess = torch.cat([hmess, pos_vecs], axis=-1)
 
         return hnode, hmess, agraph, bgraph
@@ -369,6 +378,7 @@ class IncEncoder(MotifEncoder):
 
         # embed motif
         hnode = self.E_c(fnode[:, 0])
+
         # embed attachment
         #hmess = self.E_i(fnode[:, 1])
         #hnode = self.W_c(torch.cat([hnode, finter], dim=-1))

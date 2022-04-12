@@ -59,16 +59,15 @@ loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate
 torch.manual_seed(args.seed)
 random.seed(args.seed)
 total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
-                             #'org_homo': [], 'org_lumo': [], 
-                             'homo': [], 'lumo': []}
+                             'org_homo': [], 'org_lumo': [], 'homo': [], 'lumo': []}
 logs = []
 with torch.no_grad():
-    for i, batch in enumerate(loader):
+    for i,batch in enumerate(loader):
+        orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
         logs_, preds = model.reconstruct(batch, args=args)
-        properties, logs_, dec_smiles = (logs_, preds[0], preds[1]) if isinstance(preds, tuple) \
-            else (([None]*args.batch_size, [None]*args.batch_size), logs_, preds)
+        properties, dec_smiles = preds if isinstance(preds, tuple) else (([None] * len(preds), [None] * len(preds)), preds)
         logs.extend(logs_)
-        for x, y, h, l in zip(batch[0], dec_smiles, properties[0], properties[1]):
+        for x, y, h, l in zip(orig_smiles, dec_smiles, properties[0], properties[1]):
             # extract original labels
             #x, h_, l_ = x
 
