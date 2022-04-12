@@ -1550,9 +1550,9 @@ class MotifSchedulingDecoder(torch.nn.Module):
         return results, graph_batch.get_mol()
 
 
-class MotifScheduleDecoder(torch.nn.Module):
-    def __init__(self, vocab, avocab, rnn_type, embed_size, hidden_size, latent_size, depthT, depthG, dropout, attention=False):
-        super(MotifDecoder, self).__init__()
+class MotifSchedulingDecoder(torch.nn.Module):
+    def __init__(self, vocab, avocab, rnn_type, embed_size, hidden_size, latent_size, depthT, depthG, dropout, attention=False, seed=0):
+        super(MotifSchedulingDecoder, self).__init__()
         self.vocab = vocab
         self.avocab = avocab
         self.hidden_size = hidden_size
@@ -1561,6 +1561,7 @@ class MotifScheduleDecoder(torch.nn.Module):
         self.use_attention = attention
         self.itensor = to_cuda(torch.LongTensor([]))
         self.teacher_forcing_ratio = 1 # decrease by 1 / num_epoch
+        self.random = random.Random(seed)
 
         self.hmpn = IncEncoder(vocab, avocab, rnn_type, embed_size, hidden_size, depthT, depthG, dropout)
         self.rnn_cell = self.hmpn.tree_encoder.rnn
@@ -1673,6 +1674,15 @@ class MotifScheduleDecoder(torch.nn.Module):
             icls_scores = self.iclsNN(cls_vecs) + to_cuda(vocab_masks)  # apply mask by log(x + mask): mask=0 or -INF
         return cls_scores, icls_scores
 
+    def get_topk_cls_preds(self, src_tree_vecs, batch_idx, cls_vecs, beam):
+        # get cls scores
+        cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, batch_idx, cls_vecs, cls_labs=None)
+
+        # get top-k motifs and attachment configs
+        _, topk_cls_idx = cls_scores.topk(k=beam)
+        _, topk_icls_idx = icls_scores.topk(k=beam)
+        return topk_cls_idx, topk_icls_idx
+
     def get_assm_score(self, src_graph_vecs, batch_idx, assm_vecs):
         if self.use_attention:
             assm_cxt = self.attention(src_graph_vecs, batch_idx, assm_vecs, self.A_assm)
@@ -1717,7 +1727,7 @@ class MotifScheduleDecoder(torch.nn.Module):
         )
         #  prediction backtrace statuses, motifs
         all_topo_preds, all_cls_preds, all_assm_preds = [], [], []
-
+        all_topk_cls_preds = []
         # get motif labels of the first step OR AT ROOT
         tree_scope = tree_tensors[-1]
         new_atoms = []
@@ -1727,25 +1737,37 @@ class MotifScheduleDecoder(torch.nn.Module):
             all_cls_preds.append((init_vecs[i], i, clab, ilab))  # first cluster prediction
             new_atoms.extend(root['cluster'])
 
+        # track last predictions for alternate schedule-sampling
+        cls_vecs, batch_idx, _, _ = zip_tensors(all_cls_preds)
+        all_topk_cls_preds.append(self.get_topk_cls_preds(src_tree_vecs, to_cuda(batch_idx), cls_vecs, beam=5))
+
         # get max steps of generation
         maxt = max([len(x) for x in orders])
         max_cls_size = max([len(attr) * 2 for node, attr in tree_batch.nodes(data='cluster')])
 
         # generation steps
         for t in range(maxt):
-            r = random.random()
-
             # get molecules which are not finished w/ generation
             batch_list = [i for i in range(batch_size) if t < len(orders[i])]
 
             # get latest motif label as input to next prediction (aggressive-decoding mode)
             subtree = [], []  # tuple of node-idx and message-idx
             for i in batch_list:
-                xid, yid, tlab = orders[i][t]  # tlab flag denote the parent-child relationship
-                subtree[0].append(xid)  # add next tree
-                if yid is not None:
-                    mess_idx = tree_batch[xid][yid]['mess_idx']
-                    subtree[1].append(mess_idx)  # add edge index
+                r = self.random.random()
+
+                if r > self.teacher_forcing_ratio:
+                    # use last prediction
+                    # add motif
+                    subtree[0].append(self.all_topk_cls_preds[i])
+                    # add edge
+                    subtree[1].append()
+                else:
+                    # use reference
+                    xid, yid, tlab = orders[i][t]  # tlab flag denote the parent-child relationship
+                    subtree[0].append(xid)  # add next tree
+                    if yid is not None:
+                        mess_idx = tree_batch[xid][yid]['mess_idx']
+                        subtree[1].append(mess_idx)  # add edge index
 
             subtree = htree.emask.new_tensor(subtree[0]), htree.emask.new_tensor(subtree[1])
             htree.emask.scatter_(0, subtree[1], 1)
