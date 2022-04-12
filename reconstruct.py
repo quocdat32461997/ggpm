@@ -65,7 +65,8 @@ with torch.no_grad():
     for i,batch in enumerate(loader):
         orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
         logs_, preds = model.reconstruct(batch, args=args)
-        properties, dec_smiles = preds if isinstance(preds, tuple) else (([None] * len(preds), [None] * len(preds)), preds)
+        properties, logs_, dec_smiles = (logs_, preds[0], preds[1]) if isinstance(preds, tuple) \
+            else (([None]*args.batch_size, [None]*args.batch_size), logs_, preds)
         logs.extend(logs_)
         for x, y, h, l in zip(orig_smiles, dec_smiles, properties[0], properties[1]):
             # extract original labels

@@ -190,9 +190,7 @@ class IncGraph(IncBase):
     def try_add_mol(self, batch_idx, smiles, inter_label):
         # check if sub-molecule and next-motif share the same attachment points
         emol = get_mol(smiles)
-
-        # check if sub-molecule and next-motif share the same attachment points
-        for x, y in inter_label:
+        for x,y in inter_label:
             if not atom_equal(self.mol.GetAtomWithIdx(x), emol.GetAtomWithIdx(y)):
                 return False
 

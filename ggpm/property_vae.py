@@ -146,7 +146,6 @@ class PropOptVAE(torch.nn.Module):
         #                                                              args=args)
         property_outputs = self.property_optim.predict(homo_vecs=latent_vecs[:, :self.latent_size],
                                                        lumo_vecs=latent_vecs[:, self.latent_size:])
-
         # extract property outputs
         return property_outputs, self.decoder.decode(mols, tuple([root_vecs] * 3),
                                                      greedy=True, max_decode_step=150)

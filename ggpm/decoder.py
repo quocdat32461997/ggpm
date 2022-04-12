@@ -1379,19 +1379,21 @@ class MotifSchedulingDecoder(torch.nn.Module):
         init_vecs = src_root_vecs if self.latent_size == self.hidden_size else self.W_root(src_root_vecs)
         batch_idx = self.itensor.new_tensor(range(batch_size))
         cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, batch_idx, init_vecs, None)
-        for r, cls, icls in zip(results, cls_scores, icls_scores):
-            r.append({'Top 5 super-root-idxs (aka blank roots that wont exist in the root fragments)': torch.sort(cls, descending=True, dim=-1)[1][:5]})
+        #for r, cls, icls in zip(results, cls_scores, icls_scores):
+        #    r.append({'Top 5 super-root-idxs (aka blank roots that wont exist in the root fragments)': torch.sort(cls, descending=True, dim=-1)[1][:5]})
 
         root_cls = cls_scores.max(dim=-1)[1].to('cpu')
-        icls_scores = icls_scores.to('cpu') + self.vocab.get_mask(root_cls)
-        for super_root_idx, icls, r in zip(root_cls, icls_scores, results):
-            r[-1]['super-root-idx'] = super_root_idx
+        icls_scores = icls_scores.to('cpu') + self.vocab.get_mask(root_cls) # mask to get possible attachment points only
+        for root_idx, icls, r in zip(root_cls, icls_scores, results):
             scores, cands = torch.sort(icls, descending=True, dim=-1)
-            r[-1]['top-5-root-fragment-cands'] = [(self.vocab.get_ismiles(cand), score) for score, cand in
+            # add root preds
+            r.append({'root': self.vocab.get_smiles(root_idx)})
+            r[-1]['top-5-root-attachments'] = [(self.vocab.get_ismiles(cand), score) for score, cand in
                                                       zip(scores[:5], cands[:5])]
         root_cls, root_icls = root_cls.tolist(), icls_scores.max(dim=-1)[1].tolist()
-        for r, icls in zip(results, root_icls):
-            r[-1]['Attaching Fragment'] = (self.vocab.get_ismiles(icls))
+        # add root decision
+        for r, cls, icls in zip(results, root_cls, root_icls):
+            r[-1]['Attaching Fragment'] = {'mol': cls, 'attachment': self.vocab.get_ismiles(icls)}
 
         # add super root node and get super-root index
         super_root = tree_batch.add_node()
@@ -1401,9 +1403,10 @@ class MotifSchedulingDecoder(torch.nn.Module):
             tree_batch.add_edge(super_root, root_idx)   # add edge of super-root and root
             stack[bid].append(root_idx)     # add root to stack
 
-            root_smiles = self.vocab.get_ismiles(ilab)  # get root-mol smiles
-            new_atoms, new_bonds, attached = graph_batch.add_mol(bid, root_smiles, [], 0)   # add next-mol to graph
+            root_smiles = self.vocab.get_ismiles(ilab)  # get root-mol ismiles
+            new_atoms, new_bonds, attached = graph_batch.add_mol(bid, root_smiles, [], 0)   # add mols to graph
             tree_batch.register_cgraph(root_idx, new_atoms, new_bonds, attached)    # add next-mol to tree
+            results[bid][-1]['Attaching Fragment']['attachment-points'] = (new_atoms, attached)
         for r, mol in zip(results, graph_batch.get_mol()):
             r[-1]['partial-graph'] = mol
 
@@ -1455,7 +1458,6 @@ class MotifSchedulingDecoder(torch.nn.Module):
                     new_edge = tree_batch.add_edge(stack[bid][-1], new_node, edge_feature)
                     stack[bid].append(new_node)
                     new_mess.append(new_edge)
-                    results[bid][-1]['Generate fragment'] = topo_preds[i]
                 else:
                     child = stack[bid].pop()
                     if len(stack[bid]) > 0:
@@ -1523,7 +1525,7 @@ class MotifSchedulingDecoder(torch.nn.Module):
                             new_atoms, new_bonds, attached = graph_batch.add_mol(bid, ismiles, inter_label, nth_child)
                             tree_batch.register_cgraph(new_node, new_atoms, new_bonds, attached)
                             tree_batch.update_attached(fa_node, inter_label)
-                            results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points)
+                            results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points, inter_label, [get_anchor_smiles(Chem.MolFromSmiles(ismiles), a, lambda x: x.GetIdx()) for a in attach_points])
                             success = True
                             break
                             #except Exception as e:
@@ -1543,4 +1545,6 @@ class MotifSchedulingDecoder(torch.nn.Module):
 
             # update partial graph
             for mol, r in zip(graph_batch.get_mol(), results):
+                inter_label = r[-1]['Attaching Fragment'][1] if 'Attaching Fragment' in r[-1] else []
+                r[-1]['partial-graph'] = mol
         return results, graph_batch.get_mol()

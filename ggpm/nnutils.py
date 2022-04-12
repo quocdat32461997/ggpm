@@ -131,20 +131,20 @@ def hier_topk(cls_scores, icls_scores, vocab, topk):
     cls_scores = F.log_softmax(cls_scores, dim=-1)
     cls_scores_topk, cls_topk = cls_scores.topk(topk, dim=-1)
     final_topk = []
-    for i in range(topk):  # permuate topk fragments and topk possible fragment configs
+    for i in range(topk): # permuate topk fragments and topk possible fragment configs
         clab = cls_topk[:, i]
         mask = vocab.get_mask(clab)
         masked_icls_scores = F.log_softmax(icls_scores + mask, dim=-1)
         icls_scores_topk, icls_topk = masked_icls_scores.topk(topk, dim=-1)
-        topk_scores = cls_scores_topk[:, i].unsqueeze(-1) + icls_scores_topk  # topk_scores = [bs, top_k]
+        topk_scores = cls_scores_topk[:, i].unsqueeze(-1) + icls_scores_topk # topk_scores = [bs, top_k]
         final_topk.append((topk_scores, clab.unsqueeze(-1).expand(-1, topk), icls_topk))
 
     topk_scores, cls_topk, icls_topk = zip(*final_topk)
-    topk_scores = torch.cat(topk_scores, dim=-1)  # [bs, top_k * top_k]
+    topk_scores = torch.cat(topk_scores, dim=-1) # [bs, top_k * top_k]
     cls_topk = torch.cat(cls_topk, dim=-1)
     icls_topk = torch.cat(icls_topk, dim=-1)
 
-    topk_scores, topk_index = topk_scores.topk(topk, dim=-1)  # get top_k scores of combination
+    topk_scores, topk_index = topk_scores.topk(topk, dim=-1) # get top_k scores of combination
     batch_index = cls_topk.new_tensor([[i] * topk for i in range(batch_size)])
     cls_topk = cls_topk[batch_index, topk_index]
     icls_topk = icls_topk[batch_index, topk_index]
