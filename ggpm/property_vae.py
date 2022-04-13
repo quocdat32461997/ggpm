@@ -113,14 +113,8 @@ class PropOptVAE(torch.nn.Module):
         self.R_mean = torch.nn.Linear(args.hidden_size, args.latent_size)
         self.R_var = torch.nn.Linear(args.hidden_size, args.latent_size)
 
-        # setup loss-scaling
-        self.loss_scaling = False
-        try:
-            if args.loss_scaling:
-                self.loss_scaling = True
-                self.loss_weigh = LossWeigh()
-        except:
-            pass
+        # loss weighing
+        self.loss_weigh = LossWeigh()
 
     def rsample(self, z_vecs, perturb=True):
         batch_size = z_vecs.size(0)
@@ -302,8 +296,9 @@ class PropOptSchedulingVAE(nn.Module):
                                               args.hidden_size,
                                               args.latent_size, args.diterT, args.diterG, args.dropout)
 
-        # tie embedding
-        self.encoder.tie_embedding(self.decoder.hmpn)
+    def compute_loss(self, outputs, targets):
+        # get last dim of outputs of loss-computing since each property has only 1 score
+        return torch.nn.MSELoss(reduction='sum')(outputs, targets)
 
         # define property optimizer
         self.property_hidden_size = args.latent_size // 2

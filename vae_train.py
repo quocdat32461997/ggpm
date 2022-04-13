@@ -32,7 +32,7 @@ args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
 args.to_json(args.save_dir + '/configs.json')
 
 # load model
-model_class = PropOptSchedulingVAE
+model_class = PropOptVAE
 model = to_cuda(model_class(args))
 
 # load saved encoder only
@@ -56,6 +56,8 @@ if args.load_epoch >= 0:
 
 print("Model #Params: %dK" % (sum([x.nelement() for x in model.parameters()]) / 1000,))
 
+for name, param in model.named_parameters():
+    print(name)
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 scheduler = lr_scheduler.ExponentialLR(optimizer, args.anneal_rate)
 if args.early_stopping:
