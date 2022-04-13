@@ -113,8 +113,14 @@ class PropOptVAE(torch.nn.Module):
         self.R_mean = torch.nn.Linear(args.hidden_size, args.latent_size)
         self.R_var = torch.nn.Linear(args.hidden_size, args.latent_size)
 
-        # loss weighing
-        self.loss_weigh = LossWeigh()
+        # setup loss-scaling
+        self.loss_scaling = False
+        try:
+            if args.loss_scaling:
+                self.loss_scaling = True
+                self.loss_weigh = LossWeigh()
+        except:
+            pass
 
     def rsample(self, z_vecs, perturb=True):
         batch_size = z_vecs.size(0)
@@ -190,11 +196,13 @@ class PropOptVAE(torch.nn.Module):
         # sum-up loss
         loss += beta * kl_div
 
-        # since loss-scaling may lead to negative loss
-        # hence, separate each loss term and clip individually
         if self.loss_scaling:
-            loss = self.loss_weigh.compute_recon_loss(loss)
-            homo_loss, lumo_loss = self.loss_weigh.compute_prop_loss(homo_loss, lumo_loss)
+            # weigh loss
+            total_loss = self.loss_weigh.compute_recon_loss(loss) + self.loss_weigh.compute_prop_loss(homo_loss, lumo_loss)
+        else:
+            total_loss = loss + homo_loss + lumo_loss
+        return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.item(), 'Recs_Loss': loss.item(),
+                'HOMO_MSE': homo_loss.item(), 'LUMO_MSE': lumo_loss.item(), 'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
 
         total_loss = loss + homo_loss + lumo_loss
         loss_clipped, total_loss = self.clip_negative_loss(total_loss)

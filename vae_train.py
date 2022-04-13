@@ -56,8 +56,6 @@ if args.load_epoch >= 0:
 
 print("Model #Params: %dK" % (sum([x.nelement() for x in model.parameters()]) / 1000,))
 
-for name, param in model.named_parameters():
-    print(name)
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 scheduler = lr_scheduler.ExponentialLR(optimizer, args.anneal_rate)
 if args.early_stopping:
