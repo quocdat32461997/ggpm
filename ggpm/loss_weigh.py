@@ -15,10 +15,10 @@ class LossWeigh(torch.nn.Module):
 
     def compute_prop_loss(self, homo_loss, lumo_loss):
         # homo
-        homo_loss = homo_loss * torch.exp(-self.homo_log_var) + self.homo_log_var
+        homo_loss = homo_loss * torch.exp(-self.homo_log_var) / 2 + self.homo_log_var
 
         # lumo
-        lumo_loss = lumo_loss * torch.exp(-self.lumo_log_var) + self.lumo_log_var
+        lumo_loss = lumo_loss * torch.exp(-self.lumo_log_var) / 2+ self.lumo_log_var
 
         loss = homo_loss + lumo_loss
         return loss.sum() # sum-reduction
