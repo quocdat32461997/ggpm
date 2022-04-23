@@ -1719,15 +1719,9 @@ class MotifSchedulingDecoder(torch.nn.Module):
         src_root_vecs, src_tree_vecs, src_graph_vecs = src_mol_vecs
         init_vecs = src_root_vecs if self.latent_size == self.hidden_size else self.W_root(src_root_vecs)
 
-        htree, tree_tensors = self.init_decoder_state(tree_batch, tree_tensors, init_vecs)
-        hgraph = HTuple(
-            mess=self.rnn_cell.get_init_state(graph_tensors[1]),
-            vmask=self.itensor.new_zeros(graph_tensors[0].size(0)),
-            emask=self.itensor.new_zeros(graph_tensors[1].size(0))
-        )
         #  prediction backtrace statuses, motifs
         all_topo_preds, all_cls_preds, all_assm_preds = [], [], []
-        all_topk_cls_preds = []
+
         # get motif labels of the first step OR AT ROOT
         tree_scope = tree_tensors[-1]
         new_atoms = []
@@ -1737,9 +1731,26 @@ class MotifSchedulingDecoder(torch.nn.Module):
             all_cls_preds.append((init_vecs[i], i, clab, ilab))  # first cluster prediction
             new_atoms.extend(root['cluster'])
 
-        # track last predictions for alternate schedule-sampling
+        # track root predictions for alternate schedule-sampling
         cls_vecs, batch_idx, _, _ = zip_tensors(all_cls_preds)
-        all_topk_cls_preds.append(self.get_topk_cls_preds(src_tree_vecs, to_cuda(batch_idx), cls_vecs, beam=5))
+        last_predictions = []
+        for i, icls in enumerate(self.get_topk_cls_preds(src_tree_vecs, to_cuda(batch_idx), cls_vecs, beam=1)[1]):
+            last_predictions.append(tree_tensors[0].new_tensor([-1, icls, len(tree_tensors[0]) + i + 1]))
+        last_predictions = torch.stack(last_predictions)
+
+        tree_tensors[0] = torch.cat([tree_tensors[0], last_predictions[:, :2]], dim=0)
+        tree_tensors[1] = torch.cat([tree_tensors[1],
+                                     torch.stack([last_predictions[:, 2:3],
+                                                  last_predictions.new_zers((batch_size, 3))], dim=-1)],
+                                    dim=0)
+        #all_topk_cls_preds.append([self.get_topk_cls_preds(src_tree_vecs, to_cuda(batch_idx), cls_vecs, beam=1)])
+
+        htree, tree_tensors = self.init_decoder_state(tree_batch, tree_tensors, init_vecs)
+        hgraph = HTuple(
+            mess=self.rnn_cell.get_init_state(graph_tensors[1]),
+            vmask=self.itensor.new_zeros(graph_tensors[0].size(0)),
+            emask=self.itensor.new_zeros(graph_tensors[1].size(0))
+        )
 
         # get max steps of generation
         maxt = max([len(x) for x in orders])
@@ -1754,13 +1765,16 @@ class MotifSchedulingDecoder(torch.nn.Module):
             subtree = [], []  # tuple of node-idx and message-idx
             for i in batch_list:
                 r = self.random.random()
-
+                tf_ratios.append(r)
                 if r > self.teacher_forcing_ratio:
-                    # use last prediction
-                    # add motif
+                    # add motif & update htree
                     subtree[0].append(self.all_topk_cls_preds[i])
+
                     # add edge
-                    subtree[1].append()
+                    if orders[i][t][1] is None: # at leaf node, stop predicting
+                        pass
+                    else:
+                        subtree[1].append(par_chi_bond[i]) # always connect, mess_idx = 1. at least for the motif right after root
                 else:
                     # use reference
                     xid, yid, tlab = orders[i][t]  # tlab flag denote the parent-child relationship
@@ -1779,7 +1793,13 @@ class MotifSchedulingDecoder(torch.nn.Module):
             new_atoms = []
             for i in batch_list:
                 # get topology labels upto t step (aka predict if backtrace)
-                xid, yid, tlab = orders[i][t]
+                if tf_ratios[i] > self.teacher_forcing_ratio:
+                    xid = None
+                    yid = None
+                    tlab = None
+                    pass
+                else:
+                    xid, yid, tlab = orders[i][t]
                 all_topo_preds.append((htree.node[xid], i, tlab))  # topology prediction
                 if yid is not None:
                     mess_idx = tree_batch[xid][yid]['mess_idx']

@@ -3,12 +3,12 @@
     "data": "trio_chem_supervised_train_data",
     "val_data": "trio_chem_supervised_val_data",
     "test_data": "data/chem_data/cleaned_data.csv",
-    "saved_model": "./ckpt/motif_chem_trio_fine_tuned_wo_tie_embedding_property_optim_early_stopping_v2_fixed_wrong_pretrained/model.best",
-    "output": "motif_chem_trio_fine_tuned_wo_tie_embedding_prediction_early_stopping_v2_fixed_wrong_pretrained.csv",
+    "saved_model": null,
+    "output": "pretrained_wo_tie_embedding_prediction_scheduled_sampling.csv",
     "vocab_": "trio_polymer_vocab.txt",
     "atom_vocab_": null,
-    "save_dir": "./ckpt/motif_chem_trio_fine_tuned_wo_tie_embedding_property_optim_early_stopping_v2",
-    "output_model": "./ckpt/motif_chem_trio_fine_tuned_wo_tie_embedding_property_optim_early_stopping/model.19",
+    "save_dir": "./ckpt/pretrained_wo_tie_embedding_prediction_scheduled_sampling",
+    "output_model": "./ckptpretrained_wo_tie_embedding_prediction_scheduled_sampling/model.19",
     "load_encoder_only": false,
     "load_property_head": false,
     "load_epoch": -1,
@@ -28,7 +28,7 @@
     "epoch": 20,
     "anneal_rate": 0.9,
     "print_iter": 50,
-    "eval_iter": 750,
+    "eval_iter": 500,
     "save_iter": -1,
     "seed": 1,
     "optimize_type": "soft",
@@ -38,5 +38,6 @@
     "patience": 5,
     "patience_threshold": 0.1,
     "device": "cuda:0",
-    "early_stopping": true
+    "early_stopping": true,
+    "loss_scaling": true
 }
