@@ -1680,7 +1680,7 @@ class MotifSchedulingDecoder(torch.nn.Module):
 
         # get top-k motifs and attachment configs
         _, topk_cls_idx = cls_scores.topk(k=beam)
-        _, topk_icls_idx = icls_scores.topk(k=beam)
+        _, topk_icls_idx = icls_scores.topk(k=b eam)
         return topk_cls_idx, topk_icls_idx
 
     def get_assm_score(self, src_graph_vecs, batch_idx, assm_vecs):
@@ -1757,6 +1757,8 @@ class MotifSchedulingDecoder(torch.nn.Module):
         max_cls_size = max([len(attr) * 2 for node, attr in tree_batch.nodes(data='cluster')])
 
         # generation steps
+        par_chi_bond = [1] * batch_size
+        tf_ratios = []
         for t in range(maxt):
             # get molecules which are not finished w/ generation
             batch_list = [i for i in range(batch_size) if t < len(orders[i])]
