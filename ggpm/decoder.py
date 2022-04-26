@@ -1680,7 +1680,7 @@ class MotifSchedulingDecoder(torch.nn.Module):
 
         # get top-k motifs and attachment configs
         _, topk_cls_idx = cls_scores.topk(k=beam)
-        _, topk_icls_idx = icls_scores.topk(k=b eam)
+        _, topk_icls_idx = icls_scores.topk(k=beam)
         return topk_cls_idx, topk_icls_idx
 
     def get_assm_score(self, src_graph_vecs, batch_idx, assm_vecs):

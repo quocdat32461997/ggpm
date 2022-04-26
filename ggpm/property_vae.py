@@ -150,28 +150,11 @@ class PropOptVAE(torch.nn.Module):
         return property_outputs, self.decoder.decode(mols, tuple([root_vecs] * 3),
                                                      greedy=True, max_decode_step=150)
 
-    def optimize_recs(self, batch, args):
-        mols, graphs, tensors, _, homos, lumos = batch
-        tree_tensors, _ = make_cuda(tensors)
-
-        # encode
-        root_vecs, tree_vecs = self.encoder(tree_tensors)
-
-        # add gaussian noise
-        root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
-
-        # optimize properties
-        root_vecs, homo_prop, lumo_prop = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos))
-
-        return [homo_prop, lumo_prop], self.decoder.decode(mols, (root_vecs, root_vecs, root_vecs),
-                                                           greedy=True, max_decode_step=150)
-
     def clip_negative_loss(self, loss):
         if loss > 0:
-            return False, loss
+            return loss
         else:
-            return True, loss * 0 + torch.normal(mean=0.5, std=0.5, size=loss.size(), dtype=loss.dtype,
-                                                 device=loss.device)
+            return loss * 0 + torch.normal(mean=0.5, std=0.5, size=loss.size(), dtype=loss.dtype, device=loss.device)
 
     def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
         tree_tensors, _ = tensors = make_cuda(tensors)
@@ -196,11 +179,18 @@ class PropOptVAE(torch.nn.Module):
         # sum-up loss
         loss += beta * kl_div
 
+        # since loss-scaling may lead to negative loss
+        # hence, separate each loss term and clip individually
         if self.loss_scaling:
-            # weigh loss
-            total_loss = self.loss_weigh.compute_recon_loss(loss) + self.loss_weigh.compute_prop_loss(homo_loss, lumo_loss)
-        else:
-            total_loss = loss + homo_loss + lumo_loss
+            loss = self.loss_weigh.compute_recon_loss(loss)
+            homo_loss, lumo_loss = self.loss_weigh.compute_prop_loss(homo_loss, lumo_loss)
+
+        # clip loss value
+        loss = self.clip_negative_loss(loss)
+        homo_loss = self.clip_negative_loss(homo_loss)
+        lumo_loss = self.clip_negative_loss(lumo_loss)
+
+        total_loss = loss + homo_loss + lumo_loss
         return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.item(), 'Recs_Loss': loss.item(),
                 'HOMO_MSE': homo_loss.item(), 'LUMO_MSE': lumo_loss.item(), 'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
 
