@@ -155,5 +155,5 @@ for epoch in range(args.load_epoch + 1, args.epoch):
     del dataset
     if args.save_iter == -1:
         torch.save(model.state_dict(), args.save_dir + "/model." + str(epoch))
-        scheduler.step()
+        multi_optim.decay()
         print("learning rate: %.6f" % scheduler.get_lr()[0])

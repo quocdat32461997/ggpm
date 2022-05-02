@@ -721,15 +721,15 @@ class MotifDecoder(torch.nn.Module):
                 assm_acc.append(1)
 
         # compute loss and acc
-        topo_loss = torch.tensor(topo_loss).mean()
-        cls_loss = torch.tensor(cls_loss).mean()
-        assm_loss = torch.tensor(assm_loss).mean()
+        topo_loss = src_root_vecs.new_tensor(topo_loss).mean()
+        cls_loss = src_root_vecs.new_tensor(cls_loss).mean()
+        assm_loss = src_root_vecs.new_tensor(assm_loss).mean()
         loss = topo_loss + cls_loss + assm_loss
 
-        topo_acc = torch.tensor(topo_acc).mean()
-        cls_acc = torch.tensor(cls_acc).mean()
-        icls_acc = torch.tensor(icls_acc).mean()
-        assm_acc = torch.tensor(assm_acc).mean()
+        topo_acc = topo_loss.new_tensor(topo_acc).mean()
+        cls_acc = topo_loss.new_tensor(cls_acc).mean()
+        icls_acc = topo_loss.new_tensor(icls_acc).mean()
+        assm_acc = topo_loss.new_tensor(assm_acc).mean()
 
         return loss, cls_acc, icls_acc, topo_acc, assm_acc
 
