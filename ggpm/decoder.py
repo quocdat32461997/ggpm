@@ -1493,43 +1493,43 @@ class MotifSchedulingDecoder(torch.nn.Module):
 
                 results[bid][-1]['top-5-inter-cands'] = [(self.vocab.get_smiles(x), self.vocab.get_ismiles(y), score) for x, y, score in
                                                               zip(cls_topk[i], icls_topk[i], scores[i])]
-                for kk in cls_beam:  # try until one is chemically valid
-                    if success: break
-                    clab, ilab = cls_topk[i][kk], icls_topk[i][kk]
-                    node_feature = batch_idx.new_tensor([clab, ilab])
-                    tree_batch.set_node_feature(new_node, node_feature)
-                    smiles, ismiles = self.vocab.get_smiles(clab), self.vocab.get_ismiles(ilab)
-                    fa_cluster, _, fa_used = tree_batch.get_cluster(fa_node)
-                    inter_cands, anchor_smiles, attach_points = graph_batch.get_assm_cands(fa_cluster, fa_used, ismiles)
+                try:
+                    for kk in cls_beam:  # try until one is chemically valid
+                        if success: break
+                        clab, ilab = cls_topk[i][kk], icls_topk[i][kk]
+                        node_feature = batch_idx.new_tensor([clab, ilab])
+                        tree_batch.set_node_feature(new_node, node_feature)
+                        smiles, ismiles = self.vocab.get_smiles(clab), self.vocab.get_ismiles(ilab)
+                        fa_cluster, _, fa_used = tree_batch.get_cluster(fa_node)
+                        inter_cands, anchor_smiles, attach_points = graph_batch.get_assm_cands(fa_cluster, fa_used, ismiles)
 
-                    if len(inter_cands) == 0:
-                        continue
-                    elif len(inter_cands) == 1:
-                        sorted_cands = [(inter_cands[0], 0)]
-                        nth_child = 0
-                    else:
-                        nth_child = tree_batch.graph.in_degree(fa_node)
-                        icls = [self.vocab[(smiles, x)][1] for x in anchor_smiles]
-                        cands = inter_cands if len(attach_points) <= 2 else [(x[0], x[-1]) for x in inter_cands]
-                        cand_vecs = self.enum_attach(hgraph, cands, icls, nth_child)
+                        if len(inter_cands) == 0:
+                            continue
+                        elif len(inter_cands) == 1:
+                            sorted_cands = [(inter_cands[0], 0)]
+                            nth_child = 0
+                        else:
+                            nth_child = tree_batch.graph.in_degree(fa_node)
+                            icls = [self.vocab[(smiles, x)][1] for x in anchor_smiles]
+                            cands = inter_cands if len(attach_points) <= 2 else [(x[0], x[-1]) for x in inter_cands]
+                            cand_vecs = self.enum_attach(hgraph, cands, icls, nth_child)
 
-                        batch_idx = batch_idx.new_tensor([bid] * len(inter_cands))
-                        assm_scores = self.get_assm_score(src_graph_vecs, batch_idx, cand_vecs).tolist()
-                        sorted_cands = sorted(list(zip(inter_cands, assm_scores)), key=lambda x: x[1], reverse=True)
+                            batch_idx = batch_idx.new_tensor([bid] * len(inter_cands))
+                            assm_scores = self.get_assm_score(src_graph_vecs, batch_idx, cand_vecs).tolist()
+                            sorted_cands = sorted(list(zip(inter_cands, assm_scores)), key=lambda x: x[1], reverse=True)
 
-                    for inter_label, _ in sorted_cands:
-                        inter_label = list(zip(inter_label, attach_points))
-                        if graph_batch.try_add_mol(bid, ismiles, inter_label):
-                            #try
-                            #print('batch', bid, mols[bid], 'inter-label', inter_label)
-                            new_atoms, new_bonds, attached = graph_batch.add_mol(bid, ismiles, inter_label, nth_child)
-                            tree_batch.register_cgraph(new_node, new_atoms, new_bonds, attached)
-                            tree_batch.update_attached(fa_node, inter_label)
-                            results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points, inter_label, [get_anchor_smiles(Chem.MolFromSmiles(ismiles), a, lambda x: x.GetIdx()) for a in attach_points])
-                            success = True
-                            break
-                            #except Exception as e:
-                            #    break
+                        for inter_label, _ in sorted_cands:
+                            inter_label = list(zip(inter_label, attach_points))
+                            if graph_batch.try_add_mol(bid, ismiles, inter_label):
+                                #print('batch', bid, mols[bid], 'inter-label', inter_label)
+                                new_atoms, new_bonds, attached = graph_batch.add_mol(bid, ismiles, inter_label, nth_child)
+                                tree_batch.register_cgraph(new_node, new_atoms, new_bonds, attached)
+                                tree_batch.update_attached(fa_node, inter_label)
+                                results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points, inter_label, [get_anchor_smiles(Chem.MolFromSmiles(ismiles), a, lambda x: x.GetIdx()) for a in attach_points])
+                                success = True
+                                break
+                except Exception as e:
+                    pass
 
                 if not success:  # force backtrack
                     child = stack[bid].pop()  # pop the dummy new_node which can't be added

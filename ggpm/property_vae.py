@@ -152,9 +152,9 @@ class PropOptVAE(torch.nn.Module):
 
     def clip_negative_loss(self, loss):
         if loss > 0:
-            return loss
+            return False, loss
         else:
-            return loss * 0 + torch.normal(mean=0.5, std=0.5, size=loss.size(), dtype=loss.dtype, device=loss.device)
+            return True, loss * 0 + torch.normal(mean=0.5, std=0.5, size=loss.size(), dtype=loss.dtype, device=loss.device)
 
     def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
         tree_tensors, _ = tensors = make_cuda(tensors)
@@ -186,13 +186,16 @@ class PropOptVAE(torch.nn.Module):
             homo_loss, lumo_loss = self.loss_weigh.compute_prop_loss(homo_loss, lumo_loss)
 
         # clip loss value
-        loss = self.clip_negative_loss(loss)
-        homo_loss = self.clip_negative_loss(homo_loss)
-        lumo_loss = self.clip_negative_loss(lumo_loss)
+        #loss = self.clip_negative_loss(loss)
+        #homo_loss = self.clip_negative_loss(homo_loss)
+        #lumo_loss = self.clip_negative_loss(lumo_loss)
 
         total_loss = loss + homo_loss + lumo_loss
+        loss_clipped, total_loss = self.clip_negative_loss(total_loss)
+
         return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.item(), 'Recs_Loss': loss.item(),
-                'HOMO_MSE': homo_loss.item(), 'LUMO_MSE': lumo_loss.item(), 'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
+                'HOMO_MSE': homo_loss.item(), 'LUMO_MSE': lumo_loss.item(), 'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}, \
+                True if loss_clipped else False
 
         total_loss = loss + homo_loss + lumo_loss
         loss_clipped, total_loss = self.clip_negative_loss(total_loss)
