@@ -692,14 +692,14 @@ class MotifDecoder(torch.nn.Module):
                 #    continue
 
         topo_loss, cls_loss, assm_loss = [], [], []
-        cls_acc, icls_acc, assm_acc = [], [], []
+        topo_acc, cls_acc, icls_acc, assm_acc = [], [], [], []
 
         # compute loss and acc: topo
         for pred_batch in all_topo_preds:
             topo_vecs, batch_idx, topo_labels = zip_tensors(pred_batch)
             topo_scores = self.get_topo_score(src_tree_vecs, to_cuda(batch_idx), topo_vecs)
-            topo_loss = self.topo_loss(topo_scores, to_cuda(topo_labels).float())
-            topo_acc = get_accuracy_bin(topo_scores, to_cuda(topo_labels))
+            topo_loss.append(self.topo_loss(topo_scores, to_cuda(topo_labels).float()))
+            topo_acc.append(get_accuracy_bin(topo_scores, to_cuda(topo_labels)))
 
         # compute loss and acc: cls and icls
         for pred_batch in all_cls_preds:
@@ -726,6 +726,7 @@ class MotifDecoder(torch.nn.Module):
         assm_loss = torch.tensor(assm_loss).mean()
         loss = topo_loss + cls_loss + assm_loss
 
+        topo_acc = torch.tensor(topo_acc).mean()
         cls_acc = torch.tensor(cls_acc).mean()
         icls_acc = torch.tensor(icls_acc).mean()
         assm_acc = torch.tensor(assm_acc).mean()
