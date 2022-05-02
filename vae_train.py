@@ -146,11 +146,6 @@ for epoch in range(args.load_epoch + 1, args.epoch):
     if args.early_stopping and early_stopping.early_stop:
         break
 
-    if loss_clip_break:
-        break
-    if early_stopping.early_stop:
-        break
-
     del dataset
     if args.save_iter == -1:
         torch.save(model.state_dict(), args.save_dir + "/model." + str(epoch))

@@ -86,7 +86,7 @@ class PropertyVAE(torch.nn.Module):
 
         loss += beta * kl_div
         return loss, {'Loss': loss.item(), 'KL:': kl_div.item(),
-                      'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}, False
+                'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}, False
 
 
 class PropOptVAE(torch.nn.Module):
@@ -282,24 +282,35 @@ class PropOptSchedulingVAE(nn.Module):
                 'HOMO_MSE': homo_loss, 'LUMO_MSE': lumo_loss, 'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
 
 
-        return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.item(), 'Recs_Loss': loss.item(),
-                            'HOMO_MSE': homo_loss.item(), 'LUMO_MSE': lumo_loss.item(), 'Word': wacc, 'I-Word': iacc,
-                            'Topo': tacc, 'Assm': sacc}, \
-               True if loss_clipped else False
+class PropertyRegressor(nn.Module):
+    def __init__(self, hidden_size:list, dropout:float):
+        super(PropertyRegressor, self).__init__()
+        self.linear = nn.ModuleList()
+        for idx in range(len(hidden_size) - 1):
+            self.linear.extend([nn.Linear(hidden_size[idx], hidden_size[idx + 1]),
+                                     nn.ReLU(), nn.Dropout(dropout)])
+        self.linear.append(nn.Linear(hidden_size[-1], 1))
+
+    def forward(self, x):
+        for layer in self.linear:
+            x = layer(x)
+        return x
 
 
-class PropOptSchedulingVAE(nn.Module):
-    def __init__(self, args):
-        super(PropOptSchedulingVAE, self).__init__()
-        self.encoder = MotifEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
-                                    args.depthT, args.depthG, args.dropout)
-        self.decoder = MotifSchedulingDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size,
-                                              args.hidden_size,
-                                              args.latent_size, args.diterT, args.diterG, args.dropout)
+class PropertyOptimizer(nn.Module):
+    def __init__(self, input_size, hidden_size, dropout, latent_lr):
+        super(PropertyOptimizer, self).__init__()
+        self.input_size = input_size
+        self.latent_lr = latent_lr
+
+
+        # define homo and lumo linear head
+        self.homo_linear = PropertyRegressor(hidden_size, dropout)
+        self.lumo_linear = PropertyRegressor(hidden_size, dropout)
 
     def compute_loss(self, outputs, targets):
         # get last dim of outputs of loss-computing since each property has only 1 score
-        return torch.nn.MSELoss(reduction='sum')(outputs, targets)
+        return torch.nn.MSELoss(reduction='mean')(outputs, targets)
 
         # define property optimizer
         self.property_hidden_size = args.latent_size // 2
@@ -331,8 +342,9 @@ class PropOptSchedulingVAE(nn.Module):
         # encode
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 
-        # add gaussian noise
-        root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
+        # make predictions
+        homo_vecs = self.homo_linear(homo_vecs)
+        lumo_vecs = self.lumo_linear(lumo_vecs)
 
         # find new latent vector that optimize HOMO & LUMO properties
         # root_vecs, _, property_outputs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
@@ -476,6 +488,29 @@ class PropOptSchedulingVAE(nn.Module):
 
     def hard_optimize(self, homo_vecs, lumo_vecs, targets, args):
         # Function to optimize homo_vecs and lumo_vecs in a fixed number of loops
+
+        # enable gradient tracking
+        homo_vecs.requires_grad = True
+        lumo_vecs.requires_grad = True
+
+        for _ in range(args.property_optim_step):
+            # predict HOMOs and LUMOs
+            homo_loss, lumo_loss, homo_outputs, lumo_outputs = self.forward(homo_vecs, lumo_vecs, targets)
+
+            # enable grads for non-leaf tensors
+            homo_vecs.retain_grad()
+            lumo_vecs.retain_grad()
+
+            # compute gradients
+            homo_loss.backward()
+            lumo_loss.backward()
+
+            # update latent vectors
+            homo_vecs = property_grad_optimize(homo_vecs, homo_outputs, targets[0], self.latent_lr)
+            lumo_vecs = property_grad_optimize(lumo_vecs, lumo_outputs, targets[1], self.latent_lr)
+
+        # final prediction
+        return torch.cat([homo_vecs, lumo_vecs], dim=-1), self.forward(homo_vecs, lumo_vecs, targets)
 
     def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
         tree_tensors, _ = tensors = make_cuda(tensors)

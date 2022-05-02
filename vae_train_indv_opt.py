@@ -116,7 +116,7 @@ for epoch in range(args.load_epoch + 1, args.epoch):
             n_iter = total_step // args.save_iter - 1
             torch.save(model.state_dict(), args.save_dir + "/model." + str(n_iter))
             multi_optim.decay()
-            print("learning rate: %.6f" % multi_optim.get_lr())
+            print("learning rate: %.6f" % scheduler.get_lr()[0])
 
         # evaluate
         if total_step % args.eval_iter == 0:
@@ -155,5 +155,5 @@ for epoch in range(args.load_epoch + 1, args.epoch):
     del dataset
     if args.save_iter == -1:
         torch.save(model.state_dict(), args.save_dir + "/model." + str(epoch))
-        multi_optim.decay()
-        print("learning rate: %.6f" % multi_optim.get_lr())
+        scheduler.step()
+        print("learning rate: %.6f" % scheduler.get_lr()[0])
