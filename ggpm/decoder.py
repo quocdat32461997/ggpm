@@ -612,7 +612,9 @@ class MotifDecoder(torch.nn.Module):
             emask=self.itensor.new_zeros(graph_tensors[1].size(0))
         )
         #  prediction backtrace statuses, motifs
-        all_topo_preds, all_cls_preds, all_assm_preds = [[]] * batch_size, [[]] * batch_size, [[]] * batch_size
+        all_topo_preds = [[] for _ in range(batch_size)]
+        all_cls_preds = [[] for _ in range(batch_size)]
+        all_assm_preds = [[] for _ in range(batch_size)]
 
         # get motif labels of the first step OR AT ROOT
         tree_scope = tree_tensors[-1]
