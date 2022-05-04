@@ -492,10 +492,10 @@ class MotifDecoder(torch.nn.Module):
             self.A_cls = nn.Linear(hidden_size, latent_size)
             self.A_assm = nn.Linear(hidden_size, latent_size)
 
-        self.topo_loss = nn.BCEWithLogitsLoss(reduction='mean')
-        self.cls_loss = nn.CrossEntropyLoss(reduction='mean')
-        self.icls_loss = nn.CrossEntropyLoss(reduction='mean')
-        self.assm_loss = nn.CrossEntropyLoss(reduction='mean')
+        self.topo_loss = nn.BCEWithLogitsLoss(reduction='sum')
+        self.cls_loss = nn.CrossEntropyLoss(reduction='sum')
+        self.icls_loss = nn.CrossEntropyLoss(reduction='sum')
+        self.assm_loss = nn.CrossEntropyLoss(reduction='sum')
 
     def init_decoder_state(self, tree_batch, tree_tensors, src_root_vecs):
         # Function to initialize the temporary tree and tensors
@@ -755,9 +755,9 @@ class MotifDecoder(torch.nn.Module):
             emask=self.itensor.new_zeros(graph_tensors[1].size(0))
         )
         #  prediction backtrace statuses, motifs
-        all_topo_preds = [] #[[] for _ in range(batch_size)]
-        all_cls_preds = [] #[[] for _ in range(batch_size)]
-        all_assm_preds = [] #[[] for _ in range(batch_size)]
+        all_topo_preds = []
+        all_cls_preds = []
+        all_assm_preds = []
 
         # get motif labels of the first step OR AT ROOT
         tree_scope = tree_tensors[-1]
@@ -836,37 +836,6 @@ class MotifDecoder(torch.nn.Module):
                 #    print('batch-idx', mols[i])
                 #    continue
 
-        topo_loss, cls_loss, assm_loss = [], [], []
-        topo_acc, cls_acc, icls_acc, assm_acc = [], [], [], []
-
-        """
-        # compute loss and acc: topo
-        for pred_batch in all_topo_preds:
-            topo_vecs, batch_idx, topo_labels = zip_tensors(pred_batch)
-            topo_scores = self.get_topo_score(src_tree_vecs, to_cuda(batch_idx), topo_vecs)
-            topo_loss.append(self.topo_loss(topo_scores, to_cuda(topo_labels).float()))
-            topo_acc.append(get_accuracy_bin(topo_scores, to_cuda(topo_labels)))
-
-        # compute loss and acc: cls and icls
-        for pred_batch in all_cls_preds:
-            cls_vecs, batch_idx, cls_labs, icls_labs = zip_tensors(pred_batch)
-            cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, to_cuda(batch_idx), cls_vecs, cls_labs)
-            cls_loss.append(self.cls_loss(cls_scores, to_cuda(cls_labs)) + self.icls_loss(icls_scores, to_cuda(icls_labs)))
-            cls_acc.append(get_accuracy(cls_scores, to_cuda(cls_labs)))
-            icls_acc.append(get_accuracy(icls_scores, to_cuda(icls_labs)))
-
-        # compute loss and acc: assm
-        for pred_batch in all_assm_preds:
-            if len(pred_batch) > 0:
-                assm_vecs, batch_idx, assm_labels = zip_tensors(pred_batch)
-                assm_scores = self.get_assm_score(src_graph_vecs, to_cuda(batch_idx), assm_vecs)
-                assm_loss.append(self.assm_loss(assm_scores, to_cuda(assm_labels)))
-                assm_acc.append(get_accuracy_sym(assm_scores, to_cuda(assm_labels)))
-            else:
-                assm_loss.append(0)
-                assm_acc.append(1)
-
-        """
         topo_vecs, batch_idx, topo_labels = zip_tensors(all_topo_preds)
         topo_scores = self.get_topo_score(src_tree_vecs, to_cuda(batch_idx), topo_vecs)
         topo_loss = self.topo_loss(topo_scores, to_cuda(topo_labels).float())
@@ -888,18 +857,7 @@ class MotifDecoder(torch.nn.Module):
         else:
             assm_loss = 0
             assm_acc = 1
-        """
-        # compute loss and acc
-        topo_loss = src_root_vecs.new_tensor(topo_loss)
-        cls_loss = src_root_vecs.new_tensor(cls_loss)
-        assm_loss = src_root_vecs.new_tensor(assm_loss)
-        loss = (topo_loss + cls_loss + assm_loss).mean()
 
-        topo_acc = topo_loss.new_tensor(topo_acc).mean()
-        cls_acc = topo_loss.new_tensor(cls_acc).mean()
-        icls_acc = topo_loss.new_tensor(icls_acc).mean()
-        assm_acc = topo_loss.new_tensor(assm_acc).mean()
-        """
         loss = (topo_loss + cls_loss + assm_loss) / batch_size
         return loss, cls_acc, icls_acc, topo_acc, assm_acc
 

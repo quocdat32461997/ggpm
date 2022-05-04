@@ -100,8 +100,8 @@ class PropOptVAE(torch.nn.Module):
         # tie embedding
         self.encoder.tie_embedding(self.decoder.hmpn)
 
-        self.latent_size = args.latent_size // 2  # define property optimizer
-        self.property_optim = PropertyOptimizer(input_size=self.latent_size,
+        # define property optimizer
+        self.property_optim = PropertyOptimizer(input_size=args.latent_size,
                                                 hidden_size=args.linear_hidden_size,
                                                 dropout=args.dropout)
 
@@ -168,7 +168,7 @@ class PropOptVAE(torch.nn.Module):
         kl_div = root_kl
 
         # predict HOMO & LUMO
-        latent_vecs = root_vecs.clone()  # torch.cat([root_vecs, root_vecs.clone()], dim=-1)
+        latent_vecs = torch.cat([root_vecs, root_vecs.clone()], dim=-1)
         homo_loss, lumo_loss, _, _ = self.property_optim(homo_vecs=latent_vecs[:, :self.latent_size],
                                                          lumo_vecs=latent_vecs[:, self.latent_size:],
                                                          targets=(homos, lumos))
@@ -184,11 +184,6 @@ class PropOptVAE(torch.nn.Module):
         if self.loss_scaling:
             loss = self.loss_weigh.compute_recon_loss(loss)
             homo_loss, lumo_loss = self.loss_weigh.compute_prop_loss(homo_loss, lumo_loss)
-
-        # clip loss value
-        #loss = self.clip_negative_loss(loss)
-        #homo_loss = self.clip_negative_loss(homo_loss)
-        #lumo_loss = self.clip_negative_loss(lumo_loss)
 
         total_loss = loss + homo_loss + lumo_loss
         loss_clipped, total_loss = self.clip_negative_loss(total_loss)
