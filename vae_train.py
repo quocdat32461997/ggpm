@@ -32,7 +32,7 @@ args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
 args.to_json(args.save_dir + '/configs.json')
 
 # load model
-model_class = PropOptVAE
+model_class = PropertyVAE
 model = to_cuda(model_class(args))
 
 # load saved encoder only

@@ -16,6 +16,9 @@ class MultipleOptimizer(object):
         for op in self.optimizers:
             op.zero_grad()
 
+    def get_lr(self):
+        return self.schedulers[0].get_lr()[0]
+
     def decay(self):
         for schl in self.schedulers:
             schl.step()

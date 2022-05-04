@@ -674,7 +674,7 @@ class MotifDecoder(torch.nn.Module):
                 inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label]
 
                 # graph prediction = inter-candidate prediction
-                #try:
+                # try:
                 if len(tree_batch.nodes[xid]['cluster']) > 2:  # uncertainty occurs only when previous cluster is a ring
                     nth_child = tree_batch[yid][xid]['label']  # must be yid -> xid (graph order labeling is different from tree)
                     cands = tree_batch.nodes[yid]['assm_cands']
@@ -689,6 +689,149 @@ class MotifDecoder(torch.nn.Module):
                     # batch_idx = hgraph.emask.new_tensor( [i] * max_cls_size )
                     batch_idx = hgraph.emask.new_tensor([i] * max_cls_size)
                     all_assm_preds[i].append((cand_vecs, batch_idx, 0))  # the label is always the first of assm_cands
+                # except Exception as e:
+                #    print('batch-idx', mols[i])
+                #    continue
+
+        topo_loss, cls_loss, assm_loss = [], [], []
+        topo_acc, cls_acc, icls_acc, assm_acc = [], [], [], []
+
+        # compute loss and acc: topo
+        for i, pred_batch in enumerate(all_topo_preds):
+            topo_vecs, batch_idx, topo_labels = zip_tensors(pred_batch)
+            topo_scores = self.get_topo_score(src_tree_vecs, to_cuda(batch_idx), topo_vecs)
+            topo_loss.append(self.topo_loss(topo_scores, to_cuda(topo_labels).float()))
+            topo_acc.append((topo_scores, to_cuda(topo_labels)))
+        topo_acc = zip_tensors(topo_acc, is_concat=True)
+        topo_acc = get_accuracy_bin(*topo_acc)
+
+        # compute loss and acc: cls and icls
+        for pred_batch in all_cls_preds:
+            cls_vecs, batch_idx, cls_labs, icls_labs = zip_tensors(pred_batch)
+            cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, to_cuda(batch_idx), cls_vecs, cls_labs)
+            cls_loss.append(self.cls_loss(cls_scores, to_cuda(cls_labs)) + self.icls_loss(icls_scores, to_cuda(icls_labs)))
+            cls_acc.append((cls_scores, to_cuda(cls_labs)))
+            icls_acc.append((icls_scores, to_cuda(icls_labs)))
+        cls_acc = zip_tensors(cls_acc, is_concat=True)
+        cls_acc = get_accuracy(*cls_acc)
+        icls_acc = zip_tensors(icls_acc, is_concat=True)
+        icls_acc = get_accuracy(*icls_acc)
+
+        # compute loss and acc: assm
+        for pred_batch in all_assm_preds:
+            if len(pred_batch) > 0:
+                assm_vecs, batch_idx, assm_labels = zip_tensors(pred_batch)
+                assm_scores = self.get_assm_score(src_graph_vecs, to_cuda(batch_idx), assm_vecs)
+                assm_loss.append(self.assm_loss(assm_scores, to_cuda(assm_labels)))
+                assm_acc.append((assm_scores, to_cuda(assm_labels)))
+            else:
+                assm_loss.append(0)
+                assm_acc.append((to_cuda(torch.ones((1, cand_vecs.shape[0]))), to_cuda(torch.tensor([0]))))
+        assm_acc = zip_tensors(assm_acc, is_concat=True)
+        assm_acc = get_accuracy_sym(*assm_acc)
+
+        # compute loss and acc
+        topo_loss = sum(topo_loss) / batch_size
+        cls_loss = sum(cls_loss) / batch_size
+        assm_loss = sum(assm_loss) / batch_size
+        loss = (topo_loss + cls_loss + assm_loss)
+
+        return loss, cls_acc, icls_acc, topo_acc, assm_acc
+
+    def sum_forward(self, mols, src_mol_vecs, graphs, tensors, orders):
+        batch_size = len(orders)
+        tree_batch, graph_batch = graphs
+        tree_tensors, graph_tensors = tensors
+        inter_tensors = tree_tensors
+
+        # extract root latent vector and reshape by a Linear layer if needed
+        src_root_vecs, src_tree_vecs, src_graph_vecs = src_mol_vecs
+        init_vecs = src_root_vecs if self.latent_size == self.hidden_size else self.W_root(src_root_vecs)
+
+        htree, tree_tensors = self.init_decoder_state(tree_batch, tree_tensors, init_vecs)
+        hgraph = HTuple(
+            mess=self.rnn_cell.get_init_state(graph_tensors[1]),
+            vmask=self.itensor.new_zeros(graph_tensors[0].size(0)),
+            emask=self.itensor.new_zeros(graph_tensors[1].size(0))
+        )
+        #  prediction backtrace statuses, motifs
+        all_topo_preds = [] #[[] for _ in range(batch_size)]
+        all_cls_preds = [] #[[] for _ in range(batch_size)]
+        all_assm_preds = [] #[[] for _ in range(batch_size)]
+
+        # get motif labels of the first step OR AT ROOT
+        tree_scope = tree_tensors[-1]
+        new_atoms = []
+        for i in range(batch_size):
+            root = tree_batch.nodes[tree_scope[i][0]]
+            clab, ilab = self.vocab[root['label']]  # get motif and attachment labels
+            all_cls_preds.append((init_vecs[i], i, clab, ilab))  # first cluster prediction
+            new_atoms.extend(root['cluster'])
+
+        # get max steps of generation
+        maxt = max([len(x) for x in orders])
+        max_cls_size = max([len(attr) * 2 for node, attr in tree_batch.nodes(data='cluster')])
+
+        # generation steps
+        for t in range(maxt):
+            # get molecules which are not finished w/ generation
+            batch_list = [i for i in range(batch_size) if t < len(orders[i])]
+
+            # get latest motif label as input to next prediction (aggressive-decoding mode)
+            subtree = [], []  # tuple of node-idx and message-idx
+            for i in batch_list:
+                xid, yid, tlab = orders[i][t]  # tlab flag denote the parent-child relationship
+                subtree[0].append(xid)  # add next tree
+                if yid is not None:
+                    mess_idx = tree_batch[xid][yid]['mess_idx']
+                    subtree[1].append(mess_idx)  # add edge index
+
+            subtree = htree.emask.new_tensor(subtree[0]), htree.emask.new_tensor(subtree[1])
+            htree.emask.scatter_(0, subtree[1], 1)
+
+            # get last subtree's representation
+            cur_tree_tensors = self.apply_tree_mask(tree_tensors, htree, hgraph)
+            htree = self.hmpn(cur_tree_tensors, htree, subtree)
+
+            new_atoms = []
+            for i in batch_list:
+                # get topology labels upto t step (aka predict if backtrace)
+                xid, yid, tlab = orders[i][t]
+                all_topo_preds.append((htree.node[xid], i, tlab))  # topology prediction
+                if yid is not None:
+                    mess_idx = tree_batch[xid][yid]['mess_idx']
+                    new_atoms.extend(tree_batch.nodes[yid]['cluster'])  # NOTE: regardless of tlab = 0 or 1
+
+                if tlab == 0: continue
+
+                # get next labels (motif, attachment) at t step
+                # and predict next motif and attachment at t step
+                cls = tree_batch.nodes[yid]['smiles']
+                clab, ilab = self.vocab[tree_batch.nodes[yid]['label']]
+                mess_idx = tree_batch[xid][yid]['mess_idx']
+                hmess = self.rnn_cell.get_hidden_state(htree.mess)
+                all_cls_preds.append((hmess[mess_idx], i, clab, ilab))  # motif prediction using message
+
+                # get connection labels of 2 motifs (aka attachment points)
+                inter_label = tree_batch.nodes[yid]['inter_label']
+                inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label]
+
+                # graph prediction = inter-candidate prediction
+                #try:
+                if len(tree_batch.nodes[xid]['cluster']) > 2:  # uncertainty occurs only when previous cluster is a ring
+                    nth_child = tree_batch[yid][xid]['label']  # must be yid -> xid (graph order labeling is different from tree)
+                    cands = tree_batch.nodes[yid]['assm_cands']
+                    icls = list(zip(*inter_label))[1]
+                    # print(t, nth_child, len(cands), len(icls))
+                    cand_vecs = self.enum_attach(hgraph, cands, icls, nth_child)
+
+                    if len(cand_vecs) < max_cls_size:
+                        pad_len = max_cls_size - len(cand_vecs)
+                        cand_vecs = F.pad(cand_vecs, (0, 0, 0, pad_len))
+
+                    # batch_idx = hgraph.emask.new_tensor( [i] * max_cls_size )
+                    batch_idx = hgraph.emask.new_tensor([i] * max_cls_size)
+                    all_assm_preds.append((cand_vecs, batch_idx, 0))  # the label is always the first of assm_cands
                 #except Exception as e:
                 #    print('batch-idx', mols[i])
                 #    continue
@@ -696,6 +839,7 @@ class MotifDecoder(torch.nn.Module):
         topo_loss, cls_loss, assm_loss = [], [], []
         topo_acc, cls_acc, icls_acc, assm_acc = [], [], [], []
 
+        """
         # compute loss and acc: topo
         for pred_batch in all_topo_preds:
             topo_vecs, batch_idx, topo_labels = zip_tensors(pred_batch)
@@ -722,17 +866,41 @@ class MotifDecoder(torch.nn.Module):
                 assm_loss.append(0)
                 assm_acc.append(1)
 
+        """
+        topo_vecs, batch_idx, topo_labels = zip_tensors(all_topo_preds)
+        topo_scores = self.get_topo_score(src_tree_vecs, to_cuda(batch_idx), topo_vecs)
+        topo_loss = self.topo_loss(topo_scores, to_cuda(topo_labels).float())
+        topo_acc = get_accuracy_bin(topo_scores, to_cuda(topo_labels))
+
+        # compute loss and acc: cls and icls
+        cls_vecs, batch_idx, cls_labs, icls_labs = zip_tensors(all_cls_preds)
+        cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, to_cuda(batch_idx), cls_vecs, cls_labs)
+        cls_loss = self.cls_loss(cls_scores, to_cuda(cls_labs)) + self.icls_loss(icls_scores, to_cuda(icls_labs))
+        cls_acc = get_accuracy(cls_scores, to_cuda(cls_labs))
+        icls_acc = get_accuracy(icls_scores, to_cuda(icls_labs))
+
+        # compute loss and acc: assm
+        if len(all_assm_preds) > 0:
+            assm_vecs, batch_idx, assm_labels = zip_tensors(all_assm_preds)
+            assm_scores = self.get_assm_score(src_graph_vecs, to_cuda(batch_idx), assm_vecs)
+            assm_loss = self.assm_loss(assm_scores, to_cuda(assm_labels))
+            assm_acc = get_accuracy_sym(assm_scores, to_cuda(assm_labels))
+        else:
+            assm_loss = 0
+            assm_acc = 1
+        """
         # compute loss and acc
-        topo_loss = src_root_vecs.new_tensor(topo_loss).mean()
-        cls_loss = src_root_vecs.new_tensor(cls_loss).mean()
-        assm_loss = src_root_vecs.new_tensor(assm_loss).mean()
-        loss = topo_loss + cls_loss + assm_loss
+        topo_loss = src_root_vecs.new_tensor(topo_loss)
+        cls_loss = src_root_vecs.new_tensor(cls_loss)
+        assm_loss = src_root_vecs.new_tensor(assm_loss)
+        loss = (topo_loss + cls_loss + assm_loss).mean()
 
         topo_acc = topo_loss.new_tensor(topo_acc).mean()
         cls_acc = topo_loss.new_tensor(cls_acc).mean()
         icls_acc = topo_loss.new_tensor(icls_acc).mean()
         assm_acc = topo_loss.new_tensor(assm_acc).mean()
-
+        """
+        loss = (topo_loss + cls_loss + assm_loss) / batch_size
         return loss, cls_acc, icls_acc, topo_acc, assm_acc
 
     def decode(self, mols, src_mol_vecs, greedy=True, max_decode_step=100, beam=5):

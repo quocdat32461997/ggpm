@@ -14,7 +14,7 @@
     "load_epoch": -1,
     "rnn_type":  "LSTM",
     "hidden_size": 250,
-    "linear_hidden_size": 64,
+    "linear_hidden_size": [64, 64],
     "embed_size": 250,
     "batch_size": 20,
     "latent_size": 128, "depthT": 20,
