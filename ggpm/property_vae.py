@@ -97,11 +97,8 @@ class PropOptVAE(torch.nn.Module):
         self.decoder = MotifDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
                                     args.latent_size, args.diterT, args.diterG, args.dropout)
 
-        # tie embedding
-        self.encoder.tie_embedding(self.decoder.hmpn)
-
-        # define property optimizer
-        self.property_optim = PropertyOptimizer(input_size=args.latent_size,
+        self.latent_size = args.latent_size // 2 #define property optimizer
+        self.property_optim = PropertyOptimizer(input_size=self.latent_size,
                                                 hidden_size=args.linear_hidden_size,
                                                 dropout=args.dropout)
 
@@ -141,11 +138,12 @@ class PropOptVAE(torch.nn.Module):
         # add gaussian noise
         root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
 
-        latent_vecs = root_vecs.clone()  # torch.cat([root_vecs, root_vecs.clone()], dim=-1)# find new latent vector that optimize HOMO & LUMO properties
-        # root_vecs, _, property_outputs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
+        latent_vecs = root_vecs#torch.cat([root_vecs, root_vecs.clone()], dim=-1)# find new latent vector that optimize HOMO & LUMO properties
+        #root_vecs, _, property_outputs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
         #                                                              args=args)
         property_outputs = self.property_optim.predict(homo_vecs=latent_vecs[:, :self.latent_size],
                                                        lumo_vecs=latent_vecs[:, self.latent_size:])
+
         # extract property outputs
         return property_outputs, self.decoder.decode(mols, tuple([root_vecs] * 3),
                                                      greedy=True, max_decode_step=150)

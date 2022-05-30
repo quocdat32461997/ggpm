@@ -70,7 +70,7 @@ with torch.no_grad():
         logs.extend(logs_)
         for x, y, h, l in zip(orig_smiles, dec_smiles, properties[0], properties[1]):
             # extract original labels
-            #x, h_, l_ = x
+            x, h_, l_ = x
 
             # display results
             print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, h, l))
@@ -78,10 +78,11 @@ with torch.no_grad():
             # add to outputs
             outputs['original'].append(x)
             outputs['reconstructed'].append(y)
-            #outputs['org_homo'].append(h_)
-            #outputs['org_lumo'].append(l_)
+            outputs['org_homo'].append(h_)
+            outputs['org_lumo'].append(l_)
             outputs['homo'].append(h if h is None else h.item())
             outputs['lumo'].append(l if l is None else l.item())
+
 # save outputs
 outputs = pd.DataFrame.from_dict(outputs)
 outputs.to_csv(args.output, index=False)

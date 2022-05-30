@@ -38,6 +38,5 @@
     "patience_threshold": 0.1,
     "device": "cuda:0",
     "early_stopping": true,
-    "loss_scaling": false,
-    "tie_embedding": false
+    "loss_scaling": false
 }
