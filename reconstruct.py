@@ -18,6 +18,12 @@ lg.setLevel(rdkit.RDLogger.CRITICAL)
 # get path to config
 parser = argparse.ArgumentParser()
 parser.add_argument('--path-to-config', required=True)
+parser.add_argument('--only-pretrained', action='store_true')
+
+# parse args
+args = parser.parse_args()
+path_to_config = args.path_to_config
+only_pretrained = args.only_pretrained
 
 # parse args
 args = parser.parse_args()
@@ -40,7 +46,8 @@ vocab = [x.strip("\r\n ").split() for x in open(args.vocab_)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x, y) for x, y, _ in vocab])
 
-model = to_cuda(PropOptVAE(args))
+model_class = PropertyVAE if only_pretrained == True else PropOptVAE
+model = to_cuda(model_class(args))
 # Loading state_dict
 try:
     model.load_state_dict(torch.load(args.output_model,
