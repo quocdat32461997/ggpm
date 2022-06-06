@@ -100,10 +100,11 @@ class PropOptVAE(torch.nn.Module):
         self.latent_size = args.latent_size // 2 #define property optimizer
         self.property_optim = PropertyOptimizer(input_size=self.latent_size,
                                                 hidden_size=args.linear_hidden_size,
-                                                dropout=args.dropout)
+                                                dropout=args.dropout, latent_lr=args.latent_lr)
 
         if args.tie_embedding:
             self.encoder.tie_embedding(self.decoder.hmpn)
+        #self.latent_size = args.latent_size
         self.property_optim_step = args.property_optim_step
 
         # gaussian noise
@@ -138,7 +139,7 @@ class PropOptVAE(torch.nn.Module):
         # add gaussian noise
         root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
 
-        latent_vecs = root_vecs#torch.cat([root_vecs, root_vecs.clone()], dim=-1)# find new latent vector that optimize HOMO & LUMO properties
+        latent_vecs = root_vecs.clone()#torch.cat([root_vecs, root_vecs.clone()], dim=-1)# find new latent vector that optimize HOMO & LUMO properties
         #root_vecs, _, property_outputs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
         #                                                              args=args)
         property_outputs = self.property_optim.predict(homo_vecs=latent_vecs[:, :self.latent_size],
@@ -166,7 +167,7 @@ class PropOptVAE(torch.nn.Module):
         kl_div = root_kl
 
         # predict HOMO & LUMO
-        latent_vecs = torch.cat([root_vecs, root_vecs.clone()], dim=-1)
+        latent_vecs = root_vecs.clone() #torch.cat([root_vecs, root_vecs.clone()], dim=-1)
         homo_loss, lumo_loss, _, _ = self.property_optim(homo_vecs=latent_vecs[:, :self.latent_size],
                                                          lumo_vecs=latent_vecs[:, self.latent_size:],
                                                          targets=(homos, lumos))
