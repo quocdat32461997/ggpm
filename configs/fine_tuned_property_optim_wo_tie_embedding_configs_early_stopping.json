@@ -4,11 +4,11 @@
     "val_data": "trio_chem_supervised_val_data",
     "test_data": "data/chem_data/cleaned_data.csv",
     "saved_model": "./ckpt/motif_chem_trio_pretrained_wo_tie_embedding/model.19",
-    "output": "motif_chem_trio_fine_tuned_wo_tie_embedding_prediction_early_stopping_replicate_latent.csv",
+    "output": "motif_chem_trio_fine_tuned_wo_tie_embedding_property_optim_early_stopping_v2_fixed_wrong_pretrained_controlled.csv",
     "vocab_": "trio_polymer_vocab.txt",
     "atom_vocab_": null,
-    "save_dir": "./ckpt/motif_chem_trio_fine_tuned_wo_tie_embedding_property_optim_early_stopping_replicate_latent",
-    "output_model": "./ckpt/motif_chem_trio_fine_tuned_wo_tie_embedding_property_optim_early_stopping_replicate_latent/model.best",
+    "save_dir": "./ckpt/motif_chem_trio_fine_tuned_wo_tie_embedding_property_optim_early_stopping_v2_fixed_wrong_pretrained",
+    "output_model": "./ckpt/motif_chem_trio_fine_tuned_wo_tie_embedding_property_optim_early_stopping_v2_fixed_wrong_pretrained/model.best",
     "load_encoder_only": false,
     "load_property_head": false,
     "load_epoch": -1,
@@ -39,5 +39,8 @@
     "patience": 5,
     "patience_threshold": 0.1,
     "device": "cuda:0",
-    "early_stopping": true
+    "early_stopping": true,
+    "optimize_type": "fixed",
+    "patience": 0.5,
+    "property_delta": 0.5
 }
