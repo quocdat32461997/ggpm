@@ -158,7 +158,7 @@ class PropOptVAE(torch.nn.Module):
         # encode
         root_vecs, tree_vecs = self.encoder(tree_tensors)
 
-        # add gaussian noiseÏ
+        # add gaussian noise
         root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
 
         # optimize properties
