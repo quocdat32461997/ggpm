@@ -1,136 +1,87 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data import DataLoader
-
-import math, random, sys
-import numpy as np
+import moses
 import pandas as pd
 import argparse
+import pickle
 
-from ggpm import *
 import rdkit
+from ggpm import *
+from ggpm.property_vae import PropertyVAE, PropOptVAE
+from configs import *
 
+device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+model_map = {'property-vae': PropertyVAE, 'prop-opt-vae': PropOptVAE, 'property-vae-control': PropertyVAEOptimizer}
 lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
+# get path to config
 parser = argparse.ArgumentParser()
-parser.add_argument('--train', required=True)
-parser.add_argument('--test')
-parser.add_argument('--vocab', required=True)
-parser.add_argument('--atom_vocab', default=common_atom_vocab)
-parser.add_argument('--save_dir', required=True)
-parser.add_argument('--load_epoch', type=int, default=-1)
+parser.add_argument('--model', required=True, type=str)
+parser.add_argument('--path-to-config', required=True)
 
-parser.add_argument('--rnn_type', type=str, default='LSTM')
-parser.add_argument('--hidden_size', type=int, default=250)
-parser.add_argument('--embed_size', type=int, default=250)
-parser.add_argument('--batch_size', type=int, default=20)
-parser.add_argument('--latent_size', type=int, default=24)
-parser.add_argument('--depthT', type=int, default=20)
-parser.add_argument('--depthG', type=int, default=20)
-parser.add_argument('--diterT', type=int, default=1)
-parser.add_argument('--diterG', type=int, default=5)
-parser.add_argument('--dropout', type=float, default=0.0)
-
-parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--clip_norm', type=float, default=20.0)
-parser.add_argument('--beta', type=float, default=0.1)
-
-parser.add_argument('--epoch', type=int, default=20)
-parser.add_argument('--anneal_rate', type=float, default=0.9)
-parser.add_argument('--print_iter', type=int, default=50)
-parser.add_argument('--save_iter', type=int, default=-1)
-parser.add_argument('--saved_model', type=str, default=None)
-
+# parse args
 args = parser.parse_args()
-print(args)
+path_to_config = args.path_to_config
+only_pretrained = args.only_pretrained
 
-if args.test.endswith('.csv'):
-    args.test = list(pd.read_csv(args.test)['SMILES'])
-    args.test = [line.strip("\r\n ") for line in args.test]
+# get configs
+args = Configs(path=path_to_config)
+
+if args.test_data.endswith('.csv'):
+    args.test_data = pd.read_csv(args.test_data)
+    # drop row w/ empty HOMO and LUMO
+    if args.pretrained == False:
+        args.test_data = args.test_data.dropna().reset_index(drop=True)
+    args.test_data = args.test_data.to_numpy()
 else:
-    args.test = [line.strip("\r\n ") for line in open(args.test)]
+    args.test_data = [[x, float(x), float(l)] for line in open(args.test_data) for x, h, l in line.strip("\r\n ").split()]
 
-vocab = [x.strip("\r\n ").split() for x in open(args.vocab)]
+vocab = [x.strip("\r\n ").split() for x in open(args.vocab_)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
-args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
+args.vocab = PairVocab([(x,y) for x,y,_ in vocab])
 
-# load model
-model = to_cuda(PropertyVAEOptimizer(args))
-# load saved encoder only
-if args.saved_model:
-    model = copy_encoder(model, HierVAE(args), args.saved_model)
-    print('Successfully copied encoder weights.')
+model_class = model_map(args.model)
+model = to_cuda(model_class(args))
 
-for param in model.parameters():
-    if param.dim() == 1:
-        nn.init.constant_(param, 0)
-    else:
-        nn.init.xavier_normal_(param)
+model.load_state_dict(torch.load(args.output_model,
+                                 map_location=device))
+model.eval()
 
-if args.load_epoch >= 0:
-    model.load_state_dict(torch.load(args.save_dir + "/model." + str(args.load_epoch)))
+dataset = MoleculeDataset(args.test_data, args.vocab, args.atom_vocab, args.batch_size)
+loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=lambda x:x[0])
 
-print("Model #Params: %dK" % (sum([x.nelement() for x in model.parameters()]) / 1000,))
+torch.manual_seed(args.seed)
+random.seed(args.seed)
+print('test size', len(args.test_data))
+total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
+                             'org_homo': [], 'org_lumo': [], 'homo': [], 'lumo': []}
+logs = []
+with torch.no_grad():
+    for i,batch in enumerate(loader):
+        orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
+        logs_, preds = model.reconstruct(batch, args=args)
+        properties, logs_, dec_smiles = (logs_, preds[0], preds[1]) if isinstance(preds, tuple) \
+            else (([None]*args.batch_size, [None]*args.batch_size), logs_, preds)
+        logs.extend(logs_)
+        for x, y, h, l in zip(orig_smiles, dec_smiles, properties[0], properties[1]):
+            # extract original labels
+            x, h_, l_ = x
 
-optimizer = optim.Adam(model.parameters(), lr=args.lr)
-scheduler = lr_scheduler.ExponentialLR(optimizer, args.anneal_rate)
+            # display results
+            print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, h, l))
 
-param_norm = lambda m: math.sqrt(sum([p.norm().item() ** 2 for p in m.parameters()]))
-grad_norm = lambda m: math.sqrt(sum([p.grad.norm().item() ** 2 for p in m.parameters() if p.grad is not None]))
+            # add to outputs
+            outputs['original'].append(x)
+            outputs['reconstructed'].append(y)
+            outputs['org_homo'].append(h_)
+            outputs['org_lumo'].append(l_)
+            outputs['homo'].append(h if h is None else h.item())
+            outputs['lumo'].append(l if l is None else l.item())
 
-total_step = 0
-beta = args.beta
-meters = np.zeros(6)
+# save outputs
+outputs = pd.DataFrame.from_dict(outputs)
+outputs.to_csv(args.output, index=False)
 
-# create test loader
-dataset = MoleculeDataset(args.test, args.vocab, args.atom_vocab, args.batch_size)
-test_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=lambda x: x[0])
-
-for epoch in range(args.load_epoch + 1, args.epoch):
-    dataset = DataFolder(args.train, args.batch_size)
-
-    # set training mode
-    model.train()
-    for batch in dataset:
-        total_step += 1
-        model.zero_grad()
-        loss, kl_div, wacc, iacc, tacc, sacc = model(*batch, beta=beta)
-
-        loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm)
-        optimizer.step()
-
-        meters = meters + np.array([kl_div, loss.item(), wacc * 100, iacc * 100, tacc * 100, sacc * 100])
-
-        if total_step % args.print_iter == 0:
-            meters /= args.print_iter
-            print(
-                "[%d] Beta: %.3f, KL: %.2f, loss: %.3f, Word: %.2f, %.2f, Topo: %.2f, Assm: %.2f, PNorm: %.2f, GNorm: %.2f" % (
-                total_step, beta, meters[0], meters[1], meters[2], meters[3], meters[4], meters[5], param_norm(model),
-                grad_norm(model)))
-            sys.stdout.flush()
-            meters *= 0
-
-        if args.save_iter >= 0 and total_step % args.save_iter == 0:
-            n_iter = total_step // args.save_iter - 1
-            torch.save(model.state_dict(), args.save_dir + "/model." + str(n_iter))
-            scheduler.step()
-            print("learning rate: %.6f" % scheduler.get_lr()[0])
-
-    del dataset
-    if args.save_iter == -1:
-        torch.save(model.state_dict(), args.save_dir + "/model." + str(epoch))
-        scheduler.step()
-        print("learning rate: %.6f" % scheduler.get_lr()[0])
-
-    # make prediction
-    model.eval()
-    for i, batch in enumerate(test_loader):
-        orig_smiles = args.test[args.batch_size * i : args.batch_size * (i+1)]
-        dec_smiles = model.reconstruct(batch)
-        for x, y in zip(orig_smiles, dec_smiles):
-            print(x, y)
-
+with open('logs.pkl', 'wb') as file:
+    pickle.dump(logs, file)
