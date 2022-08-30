@@ -18,12 +18,10 @@ lg.setLevel(rdkit.RDLogger.CRITICAL)
 # get path to config
 parser = argparse.ArgumentParser()
 parser.add_argument('--path-to-config', required=True)
-parser.add_argument('--only-pretrained', action='store_true')
 
 # parse args
 args = parser.parse_args()
 path_to_config = args.path_to_config
-only_pretrained = args.only_pretrained
 
 # parse args
 args = parser.parse_args()
@@ -46,8 +44,7 @@ vocab = [x.strip("\r\n ").split() for x in open(args.vocab_)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x, y) for x, y, _ in vocab])
 
-model_class = PropertyVAE if only_pretrained == True else PropOptVAE
-model = to_cuda(model_class(args))
+model = to_cuda(PropOptVAE(args))
 # Loading state_dict
 try:
     model.load_state_dict(torch.load(args.output_model,
@@ -66,18 +63,18 @@ loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate
 torch.manual_seed(args.seed)
 random.seed(args.seed)
 total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
-                             'org_homo': [], 'org_lumo': [], 'homo': [], 'lumo': []}
+                             #'org_homo': [], 'org_lumo': [], 
+                             'homo': [], 'lumo': []}
 logs = []
 with torch.no_grad():
-    for i,batch in enumerate(loader):
-        orig_smiles = args.test_data[args.batch_size * i : args.batch_size * (i + 1)]
+    for i, batch in enumerate(loader):
         logs_, preds = model.reconstruct(batch, args=args)
         properties, logs_, dec_smiles = (logs_, preds[0], preds[1]) if isinstance(preds, tuple) \
             else (([None]*args.batch_size, [None]*args.batch_size), logs_, preds)
         logs.extend(logs_)
-        for x, y, h, l in zip(orig_smiles, dec_smiles, properties[0], properties[1]):
+        for x, y, h, l in zip(batch[0], dec_smiles, properties[0], properties[1]):
             # extract original labels
-            x, h_, l_ = x
+            #x, h_, l_ = x
 
             # display results
             print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, h, l))
@@ -85,11 +82,10 @@ with torch.no_grad():
             # add to outputs
             outputs['original'].append(x)
             outputs['reconstructed'].append(y)
-            outputs['org_homo'].append(h_)
-            outputs['org_lumo'].append(l_)
+            #outputs['org_homo'].append(h_)
+            #outputs['org_lumo'].append(l_)
             outputs['homo'].append(h if h is None else h.item())
             outputs['lumo'].append(l if l is None else l.item())
-
 # save outputs
 outputs = pd.DataFrame.from_dict(outputs)
 outputs.to_csv(args.output, index=False)

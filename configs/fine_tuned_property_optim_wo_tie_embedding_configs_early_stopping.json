@@ -42,5 +42,6 @@
     "early_stopping": true,
     "optimize_type": "fixed",
     "patience": 0.5,
-    "property_delta": 0.5
+    "property_delta": 0.5,
+    "tie_embedding": false
 }

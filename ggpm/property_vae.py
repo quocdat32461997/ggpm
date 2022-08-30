@@ -4,7 +4,6 @@ import numpy as np
 from ggpm.encoder import MotifEncoder
 from ggpm.decoder import MotifDecoder, MotifSchedulingDecoder
 from ggpm.property_optimizer import PropertyOptimizer
-
 from ggpm.loss_weigh import *
 from ggpm.nnutils import *
 
@@ -102,8 +101,7 @@ class PropOptVAE(torch.nn.Module):
         self.latent_size = args.latent_size // 2 #define property optimizer
         self.property_optim = PropertyOptimizer(input_size=self.latent_size,
                                                 hidden_size=args.linear_hidden_size,
-                                                dropout=args.dropout, latent_lr=args.latent_lr,
-                                                optimize_type=args.optimize_type)
+                                                dropout=args.dropout)
 
         if args.tie_embedding:
             self.encoder.tie_embedding(self.decoder.hmpn)
@@ -284,34 +282,6 @@ class PropOptSchedulingVAE(nn.Module):
         # extract property outputs
         return property_outputs, self.decoder.decode(mols, (root_vecs, root_vecs, root_vecs),
                                                      greedy=True, max_decode_step=150)
-
-    def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
-        tree_tensors, _ = tensors = make_cuda(tensors)
-        homos, lumos = make_tensor(homos), make_tensor(lumos)
-
-        # encode
-        root_vecs, tree_vecs = self.encoder(tree_tensors)
-
-        # sampling latent vectors
-        root_vecs, root_kl = self.rsample(root_vecs, perturb_z)
-        kl_div = root_kl
-
-        # predict HOMO & LUMO
-        homo_loss, lumo_loss, _, _ = self.property_optim(homo_vecs=root_vecs[:, :self.property_hidden_size],
-                                                         lumo_vecs=root_vecs[:, self.property_hidden_size:],
-                                                         targets=(homos, lumos))
-
-        # decode
-        loss, wacc, iacc, tacc, sacc = self.decoder(mols, (root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
-
-        # sum-up loss
-        loss += beta * kl_div
-
-        # scale up homo & lumo loss by 20
-        total_loss = loss + 20 * homo_loss + 20 * lumo_loss
-        return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.item(), 'Recs_Loss': loss.item(),
-                            'HOMO_MSE': homo_loss, 'LUMO_MSE': lumo_loss, 'Word': wacc, 'I-Word': iacc, 'Topo': tacc,
-                            'Assm': sacc}
 
     def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
         tree_tensors, _ = tensors = make_cuda(tensors)

@@ -868,7 +868,7 @@ class MotifDecoder(torch.nn.Module):
 
         tree_batch = IncTree(batch_size, max_nodes=400, max_edges=500,
                              node_fdim=2, edge_fdim=3)
-        graph_batch = IncGraph(self.avocab, batch_size,
+        graph_batch = IncGraph(self.vocab, self.avocab, batch_size,
                                max_nodes=400, max_edges=500,
                                node_fdim=self.hmpn.atom_size,
                                edge_fdim=self.hmpn.atom_size + self.hmpn.bond_size)
