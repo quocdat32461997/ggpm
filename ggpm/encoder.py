@@ -68,7 +68,7 @@ class HierMPNEncoder(nn.Module):
         )
         # feature of attachments
         self.W_i = nn.Sequential(
-            nn.Linear(embed_size + hidden_size, hidden_size),
+            nn.Linear(embed_size * 2, hidden_size),
             nn.ReLU(),
             nn.Dropout(dropout)
         )
@@ -76,7 +76,7 @@ class HierMPNEncoder(nn.Module):
         self.E_a = to_cuda(torch.eye(atom_size))  # one-hot embedding of common atoms
         self.E_b = to_cuda(torch.eye(len(MolGraph.BOND_LIST)))  # one-hot embedding of bonds
         self.E_apos = to_cuda(torch.eye(MolGraph.MAX_POS))  # one-hot embedding of atom position encodings
-        self.E_pos = to_cuda(torch.eye(MolGraph.MAX_POS))  # one-hot embedding of position encodings
+        self.E_pos = to_cuda(torch.eye(MolGraph.MAX_POS))  # one-hot embedding of attachment-position encodings
 
         self.W_root = nn.Sequential(
             nn.Linear(hidden_size * 2, hidden_size),
@@ -97,7 +97,7 @@ class HierMPNEncoder(nn.Module):
 
     def embed_inter(self, tree_tensors, hatom):
         fnode, fmess, agraph, bgraph, cgraph, _ = tree_tensors
-        finput = self.E_i(fnode[:, 1])  # atom attachment embedding
+        finput = self.E_i(fnode[:, 1])  # motif-level attachment embedding
 
         hnode = index_select_ND(hatom, 0, cgraph).sum(dim=1)
         hnode = self.W_i(torch.cat([finput, hnode], dim=-1))  # attachment node feature
@@ -270,6 +270,11 @@ class MotifEncoder(torch.nn.Module):
             torch.nn.Dropout(dropout)
         )
 
+        # motif
+        #self.W_c = nn.Sequential(
+        #    nn.Linear(embed_size + hidden_size, hidden_size),
+        #    nn.ReLU(), nn.Dropout(dropout)
+        #)
         # root
         self.W_root = nn.Sequential(
             nn.Linear(hidden_size * 2, hidden_size),
@@ -277,6 +282,7 @@ class MotifEncoder(torch.nn.Module):
         )
 
         # one-hot attachment connectivity embedding
+        self.E_a = to_cuda(torch.eye(atom_size))  # one-hot embedding of common atoms
         self.E_pos = to_cuda(torch.eye(MolGraph.MAX_POS))
 
         # motif layer
@@ -289,26 +295,23 @@ class MotifEncoder(torch.nn.Module):
 
     def tie_embedding(self, other):
         self.E_c, self.E_i = other.E_c, other.E_i
+        self.E_a = other.E_a
 
     def embed_tree(self, tree_tensors):
+        # Currently, consider motif-embedding and attachments' position encoding
         # Function to embed motif and attachment
         fnode, fmess, agraph, bgraph, cgraph, _ = tree_tensors
 
-        # embed motif
-        node_f = self.E_c(fnode[:, 0])
+        # embed motif and attachment
+        hnode = self.E_c(fnode[:, 0])
+        hmess = self.E_i(fnode[:, 1])  # motif-level attachment embedding
 
-        # embed attachment
-        attachment_f = self.E_i(fnode[:, 1])
+        # get hmess
+        hmess = hmess.index_select(index=fmess[:, 0], dim=0) # select hnode for multiple connections
+        pos_vecs = self.E_pos.index_select(dim=0, index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
+        hmess = torch.cat([hmess, pos_vecs], axis=-1)
 
-        # position encoding of attachment
-        pos_vecs = self.E_pos.index_select(dim=0,
-                                           index=fmess[:, 2])  # embedding vector d_ij that order between 2 attachment nodes
-
-        # embed message
-        mess_f = attachment_f.index_select(dim=0, index=fmess[:, 0])
-        mess_f = torch.cat([mess_f, pos_vecs], axis=-1)
-
-        return node_f, mess_f, agraph, bgraph
+        return hnode, hmess, agraph, bgraph
 
     def embed_root(self, hmess, tree_tensors, roots):
         # Function to embed root motif
@@ -341,7 +344,7 @@ class IncEncoder(MotifEncoder):
     def __init__(self, vocab, avocab, rnn_type, embed_size, hidden_size, depthT, depthG, dropout):
         super(IncEncoder, self).__init__(vocab, avocab, rnn_type, embed_size, hidden_size, depthT,
                                          depthG, dropout)
-        self.tree_encoder = IncMPNEncoder(rnn_type, hidden_size + MolGraph.MAX_POS, hidden_size, hidden_size, depthT,
+        self.tree_encoder = IncMPNEncoder(rnn_type, embed_size + MolGraph.MAX_POS, hidden_size, hidden_size, depthT,
                                           dropout)
         del self.W_root
 
@@ -365,21 +368,21 @@ class IncEncoder(MotifEncoder):
         fnode, fmess, agraph, bgraph, cgraph, _ = self.get_sub_tensor(tree_tensors, subtree)
 
         # embed motif
-        node_f = self.E_c(fnode[:, 0])
-
+        hnode = self.E_c(fnode[:, 0])
         # embed attachment
-        #attachment_f = self.E_i(fnode[:, 1])
+        #hmess = self.E_i(fnode[:, 1])
+        #hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
 
         if len(submess) == 0: # if no parent-child pair
-            mess_f = fmess
+            hmess = fmess
         else:
             node_buf = torch.zeros(num_nodes, self.hidden_size, device=fmess.device)
-            node_buf = index_scatter(node_f, node_buf, subnode)
-            mess_f = node_buf.index_select(index=fmess[:, 0], dim=0)
+            node_buf = index_scatter(hnode, node_buf, subnode)
+            hmess = node_buf.index_select(index=fmess[:, 0], dim=0)
             pos_vecs = self.E_pos.index_select(0, fmess[:, 2])
-            mess_f = torch.cat([mess_f, pos_vecs], dim=-1)
+            hmess = torch.cat([hmess, pos_vecs], dim=-1)
 
-        return node_f, mess_f, agraph, bgraph
+        return hnode, hmess, agraph, bgraph
 
     def forward(self, tree_tensors, htree, subtree):
         num_tree_nodes = tree_tensors[0].size(0)

@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from rdkit.Chem import AllChem
 from rdkit import DataStructs
+from collections import OrderedDict
 
 is_cuda = torch.cuda.is_available()
 device = torch.device('cuda:0') if is_cuda else torch.device('cpu')
@@ -107,14 +108,14 @@ def create_pad_tensor(alist):
     return torch.IntTensor(alist)
 
 
-def zip_tensors(tup_list):
+def zip_tensors(tup_list, is_concat=False):
     res = []
     tup_list = zip(*tup_list)
     for a in tup_list:
         if type(a[0]) is int:
             res.append(torch.LongTensor(a))  # .cuda())
         else:
-            res.append(torch.stack(a, dim=0))
+            res.append(torch.cat(a, dim=0) if is_concat else torch.stack(a, dim=0))
     return res
 
 
@@ -130,20 +131,20 @@ def hier_topk(cls_scores, icls_scores, vocab, topk):
     cls_scores = F.log_softmax(cls_scores, dim=-1)
     cls_scores_topk, cls_topk = cls_scores.topk(topk, dim=-1)
     final_topk = []
-    for i in range(topk):
+    for i in range(topk):  # permuate topk fragments and topk possible fragment configs
         clab = cls_topk[:, i]
         mask = vocab.get_mask(clab)
         masked_icls_scores = F.log_softmax(icls_scores + mask, dim=-1)
         icls_scores_topk, icls_topk = masked_icls_scores.topk(topk, dim=-1)
-        topk_scores = cls_scores_topk[:, i].unsqueeze(-1) + icls_scores_topk
+        topk_scores = cls_scores_topk[:, i].unsqueeze(-1) + icls_scores_topk  # topk_scores = [bs, top_k]
         final_topk.append((topk_scores, clab.unsqueeze(-1).expand(-1, topk), icls_topk))
 
     topk_scores, cls_topk, icls_topk = zip(*final_topk)
-    topk_scores = torch.cat(topk_scores, dim=-1)
+    topk_scores = torch.cat(topk_scores, dim=-1)  # [bs, top_k * top_k]
     cls_topk = torch.cat(cls_topk, dim=-1)
     icls_topk = torch.cat(icls_topk, dim=-1)
 
-    topk_scores, topk_index = topk_scores.topk(topk, dim=-1)
+    topk_scores, topk_index = topk_scores.topk(topk, dim=-1)  # get top_k scores of combination
     batch_index = cls_topk.new_tensor([[i] * topk for i in range(batch_size)])
     cls_topk = cls_topk[batch_index, topk_index]
     icls_topk = icls_topk[batch_index, topk_index]
@@ -182,3 +183,15 @@ def get_frechet_dist(mol_x, mol_y, radius=3, n_bits=2048):
     fp_y = AllChem.GetMorganFingerprintAsBitVect(mol_y, radius, nBits=n_bits)
     # TO-DO: add frechet_dist formula
     return None
+
+
+def rename_optimizer_state_keys(model_state_dict):
+    new_state_dict = OrderedDict()
+
+    for k, v in model_state_dict.items():
+        if 'property_optim' in k:
+            name = k[:26] + '.linear' + k[26:]
+        else:
+            name = k
+        new_state_dict[name] = v
+    return new_state_dict

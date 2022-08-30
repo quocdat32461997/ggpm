@@ -22,15 +22,15 @@ class MolGraph(object):
         fragments = [Chem.MolToSmiles(Chem.MolFromSmiles(x)) for x in fragments]
         MolGraph.FRAGMENTS = set(fragments)
 
-    def __init__(self, smiles):
+    def __init__(self, smiles, mol = None):
         self.smiles = smiles
-        self.mol = get_mol(smiles)
+        self.mol = get_mol(smiles) if not mol else mol
 
         self.mol_graph = self.build_mol_graph()  # build the atom-based graph of the given molecule
         self.clusters = self.find_clusters()
         self.clusters, self.atom_cls = self.pool_clusters() # motif-based graph
         self.mol_tree = self.tree_decomp()
-        self.order = self.label_tree()  # list of tuples (x, y, #) that # = 1 if parent-> child; and otherwise if # = 0
+        self.order = self.label_tree(mol)  # list of tuples (x, y, #) that # = 1 if parent-> child; and otherwise if # = 0
 
     def find_clusters(self):
         # Function to find clusters - each cluster is either a bond or a smallest ring
@@ -119,7 +119,7 @@ class MolGraph(object):
 
         return hoptions, atom_cls
 
-    def label_tree(self):
+    def label_tree(self, mol = None):
         def dfs(order, pa, prev_sib, x, fa):
             # DFS to find children of each parent
             pa[x] = fa
@@ -141,7 +141,7 @@ class MolGraph(object):
 
         order.append((0, None, 0))  # last backtrack at root
 
-        mol = get_mol(self.smiles)
+        mol = get_mol(self.smiles) if not mol else mol
         for a in mol.GetAtoms():
             a.SetAtomMapNum(a.GetIdx() + 1)
 
@@ -261,9 +261,9 @@ class MolGraph(object):
             # get edges
             for u, v, attr in G.edges(data='label'):
                 if type(attr) is tuple:
-                    fmess.append((u, v, attr[0], attr[1]))
+                    fmess.append((u, v, attr[0], attr[1])) # for graph, attr = bond-type
                 else:
-                    fmess.append((u, v, attr, 0))
+                    fmess.append((u, v, attr, 0)) # for tensor
                 edge_dict[(u, v)] = eid = len(edge_dict) + 1
                 G[u][v]['mess_idx'] = eid
                 agraph[v].append(eid)

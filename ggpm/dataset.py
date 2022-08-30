@@ -20,8 +20,10 @@ class MoleculeDataset(Dataset):
             for node, attr in hmol.mol_tree.nodes(data=True):
                 smiles = attr['smiles']
                 ok &= attr['label'] in vocab.vmap
+                #print('label', mol_s, attr['label'], ok)
                 for i, s in attr['inter_label']:
                     ok &= (smiles, s) in vocab.vmap
+                #    print('inter_label', mol_s, i, s, ok)
             if ok:
                 safe_data.append([mol_s, homo, lumo])
 

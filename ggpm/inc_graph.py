@@ -5,15 +5,15 @@ from ggpm.mol_graph import MolGraph
 from ggpm.chemutils import *
 from collections import defaultdict
 from ggpm.nnutils import to_cuda
-
+from copy import copy
 
 class IncBase(object):
 
     def __init__(self, batch_size, node_fdim, edge_fdim, max_nodes=100, max_edges=200, max_nb=12):
         self.max_nb = max_nb
         self.graph = nx.DiGraph()
-        self.graph.add_node(0) #make sure node is 1 index
-        self.edge_dict = {None : 0} #make sure edge is 1 index
+        self.graph.add_node(0)  # make sure node is 1 index
+        self.edge_dict = {None: 0}  # make sure edge is 1 index
 
         self.fnode = to_cuda(torch.zeros(max_nodes * batch_size, node_fdim).long())
         self.fmess = self.fnode.new_zeros(max_edges * batch_size, edge_fdim)
@@ -35,22 +35,23 @@ class IncBase(object):
         return self.graph.in_degree(idx) < self.max_nb
 
     def add_edge(self, i, j, feature=None):
-        if (i,j) in self.edge_dict: 
-            return self.edge_dict[(i,j)]
+        if (i, j) in self.edge_dict:
+            return self.edge_dict[(i, j)]
 
         self.graph.add_edge(i, j)
-        self.edge_dict[(i,j)] = idx = len(self.edge_dict)
+        self.edge_dict[(i, j)] = idx = len(self.edge_dict)
 
         self.agraph[j, self.graph.in_degree(j) - 1] = idx
         if feature is not None:
             self.fmess[idx, :len(feature)] = feature
 
-        in_edges = [self.edge_dict[(k,i)] for k in self.graph.predecessors(i) if k != j]
+        in_edges = [self.edge_dict[(k, i)] for k in self.graph.predecessors(i) if k != j]
         self.bgraph[idx, :len(in_edges)] = self.fnode.new_tensor(in_edges)
 
         for k in self.graph.successors(j):
-            if k == i: continue
-            nei_idx = self.edge_dict[(j,k)]
+            if k == i:
+                continue
+            nei_idx = self.edge_dict[(j, k)]
             self.bgraph[nei_idx, self.graph.in_degree(j) - 2] = idx
 
         return idx
@@ -63,7 +64,7 @@ class IncTree(IncBase):
         self.cgraph = self.fnode.new_zeros(max_nodes * batch_size, max_sub_nodes)
 
     def get_tensors(self):
-        return self.fnode, self.fmess, self.agraph, self.bgraph, self.cgraph, None 
+        return self.fnode, self.fmess, self.agraph, self.bgraph, self.cgraph, None
 
     def register_cgraph(self, i, nodes, edges, attached):
         self.cgraph[i, :len(nodes)] = self.fnode.new_tensor(nodes)
@@ -72,7 +73,7 @@ class IncTree(IncBase):
         self.graph.nodes[i]['attached'] = attached
 
     def update_attached(self, i, attached):
-        if len(self.graph.nodes[i]['cluster']) > 1: 
+        if len(self.graph.nodes[i]['cluster']) > 1:
             used = list(zip(*attached))[0]
             self.graph.nodes[i]['attached'].extend(used)
 
@@ -84,19 +85,20 @@ class IncTree(IncBase):
         return cluster, edges, used
 
     def get_cluster_nodes(self, node_list):
-        return [ c for node_idx in node_list for c in self.graph.nodes[node_idx]['cluster'] ]
+        return [c for node_idx in node_list for c in self.graph.nodes[node_idx]['cluster']]
 
     def get_cluster_edges(self, node_list):
-        return [ e for node_idx in node_list for e in self.graph.nodes[node_idx]['cluster_edges'] ]
+        return [e for node_idx in node_list for e in self.graph.nodes[node_idx]['cluster_edges']]
 
 
 class IncGraph(IncBase):
 
-    def __init__(self, avocab, batch_size, node_fdim, edge_fdim, max_nodes=100, max_edges=300, max_nb=10):
+    def __init__(self, vocab, avocab, batch_size, node_fdim, edge_fdim, max_nodes=100, max_edges=300, max_nb=10):
         super(IncGraph, self).__init__(batch_size, node_fdim, edge_fdim, max_nodes, max_edges, max_nb)
+        self.vocab=vocab
         self.avocab = avocab
         self.mol = Chem.RWMol()
-        self.mol.AddAtom( Chem.Atom('C') ) #make sure node is 1 index, consistent to self.graph
+        self.mol.AddAtom(Chem.Atom('C'))  # make sure node is 1 index, consistent to self.graph
         self.fnode = self.fnode.float()
         self.fmess = self.fmess.float()
         self.batch = defaultdict(list)
@@ -107,25 +109,38 @@ class IncGraph(IncBase):
         for batch_idx, batch_atoms in self.batch.items():
             mol = get_sub_mol(self.mol, batch_atoms)
             mol = sanitize(mol, kekulize=False)
-            if mol is None: 
+
+            if mol is None:
                 mol_list[batch_idx] = None
             else:
+                """
+                mol_graph = MolGraph(smiles=None, mol=copy(mol))
+                ok = True
+                for node, attr in mol_graph.mol_tree.nodes(data=True):
+                    smiles = attr['smiles']
+                    ok &= attr['label'] in self.vocab.vmap
+                    
+                    for i, s in attr['inter_label']:
+                        ok &= (smiles, s) in self.vocab.vmap                
+                """
                 for atom in mol.GetAtoms():
                     atom.SetAtomMapNum(0)
                 mol_list[batch_idx] = Chem.MolToSmiles(mol)
+            
+                #print(mol_list[batch_idx])
         return mol_list
 
     def get_tensors(self):
-        return self.fnode, self.fmess, self.agraph, self.bgraph, None 
+        return self.fnode, self.fmess, self.agraph, self.bgraph, None
 
     def add_mol(self, batch_idx, smiles, inter_label, nth_child):
         emol = get_mol(smiles)
-        atom_map = {y : x for x,y in inter_label}
+        atom_map = {y: x for x, y in inter_label}
         new_atoms, new_bonds, attached = [], [], []
         interior_atoms = []
 
-        for atom in emol.GetAtoms(): #atoms must be inserted in order given by emol.GetAtoms() (for rings assembly)
-            if atom.GetIdx() in atom_map: 
+        for atom in emol.GetAtoms():  # atoms must be inserted in order given by emol.GetAtoms() (for rings assembly)
+            if atom.GetIdx() in atom_map:
                 idx = atom_map[atom.GetIdx()]
                 new_atoms.append(idx)
                 attached.append(idx)
@@ -135,55 +150,63 @@ class IncGraph(IncBase):
                 if a not in self.atoms:
                     self.atoms.append(a)
 
-                new_atom.SetAtomMapNum( batch_idx ) 
-                idx = self.mol.AddAtom( new_atom )
-                assert idx == self.add_node( self.get_atom_feature(new_atom) ) #mol and nx graph must have the same indexing
+                new_atom.SetAtomMapNum(batch_idx)
+                idx = self.mol.AddAtom(new_atom)
+                # mol and nx graph must have the same indexing
+                assert idx == self.add_node(self.get_atom_feature(new_atom))
                 atom_map[atom.GetIdx()] = idx
                 new_atoms.append(idx)
                 self.batch[batch_idx].append(idx)
-                if atom.GetAtomMapNum() == 1: attached.append(idx)
-                if atom.GetAtomMapNum() == 0: interior_atoms.append(idx)
+                if atom.GetAtomMapNum() == 1:
+                    attached.append(idx)
+                if atom.GetAtomMapNum() == 0:
+                    interior_atoms.append(idx)
 
         for bond in emol.GetBonds():
             a1 = atom_map[bond.GetBeginAtom().GetIdx()]
             a2 = atom_map[bond.GetEndAtom().GetIdx()]
-            if a1 == a2: continue
+            if a1 == a2:
+                continue
             bond_type = bond.GetBondType()
             existing_bond = self.mol.GetBondBetweenAtoms(a1, a2)
             if existing_bond is None:
                 self.mol.AddBond(a1, a2, bond_type)
-                self.add_edge(a1, a2, self.get_mess_feature(bond.GetBeginAtom(), bond_type, nth_child if a2 in attached else 0) ) #only child to father node (in intersection) have non-zero nth_child
-                self.add_edge(a2, a1, self.get_mess_feature(bond.GetEndAtom(), bond_type, nth_child if a1 in attached else 0) ) 
+                # only child to father node (in intersection) have non-zero nth_child
+                self.add_edge(a1, a2, self.get_mess_feature(bond.GetBeginAtom(),
+                              bond_type, nth_child if a2 in attached else 0))
+                self.add_edge(a2, a1, self.get_mess_feature(bond.GetEndAtom(),
+                              bond_type, nth_child if a1 in attached else 0))
             else:
-                attached.extend( [(a1,a2),(a2,a1)] )
-            new_bonds.extend( [ self.edge_dict[(a1,a2)], self.edge_dict[(a2,a1)] ] )
+                attached.extend([(a1, a2), (a2, a1)])
+            new_bonds.extend([self.edge_dict[(a1, a2)], self.edge_dict[(a2, a1)]])
 
-        if emol.GetNumAtoms() == 1: #singletons always attached = []
+        if emol.GetNumAtoms() == 1:  # singletons always attached = []
             attached = []
-        else: # interior_atoms have already been "attached" to empty
+        else:  # interior_atoms have already been "attached" to empty
             attached = attached + interior_atoms
         return new_atoms, new_bonds, attached
 
-    #validity check function
+    # validity check function
     def try_add_mol(self, batch_idx, smiles, inter_label):
+        # check if sub-molecule and next-motif share the same attachment points
         emol = get_mol(smiles)
 
         # check if sub-molecule and next-motif share the same attachment points
-        for x,y in inter_label:
+        for x, y in inter_label:
             if not atom_equal(self.mol.GetAtomWithIdx(x), emol.GetAtomWithIdx(y)):
                 return False
 
         # create attachment-map of common atoms
-        atom_map = {y : x for x,y in inter_label}
+        atom_map = {y: x for x, y in inter_label}
         new_atoms, new_bonds = [], []
 
         # if atom in potential motif not in atom-map,
         # collect new atom and update atom-map with new atoms
-        for atom in emol.GetAtoms(): #atoms must be inserted in order given by emol.GetAtoms() (for rings assembly)
-            if atom.GetIdx() not in atom_map: 
+        for atom in emol.GetAtoms():  # atoms must be inserted in order given by emol.GetAtoms() (for rings assembly)
+            if atom.GetIdx() not in atom_map:
                 new_atom = copy_atom(atom)
-                new_atom.SetAtomMapNum( batch_idx ) 
-                idx = self.mol.AddAtom( new_atom )
+                new_atom.SetAtomMapNum(batch_idx)
+                idx = self.mol.AddAtom(new_atom)
                 atom_map[atom.GetIdx()] = idx
                 new_atoms.append(idx)
 
@@ -195,24 +218,24 @@ class IncGraph(IncBase):
         for bond in emol.GetBonds():
             a1 = atom_map[bond.GetBeginAtom().GetIdx()]
             a2 = atom_map[bond.GetEndAtom().GetIdx()]
-            if a1 == a2: #self loop must be an error
+            if a1 == a2:  # self loop must be an error
                 valid = False
                 break
             bond_type = bond.GetBondType()
-            if self.mol.GetBondBetweenAtoms(a1, a2) is None: #later maybe check bond type match
+            if self.mol.GetBondBetweenAtoms(a1, a2) is None:  # later maybe check bond type match
                 self.mol.AddBond(a1, a2, bond_type)
-                new_bonds.append( (a1,a2) )
+                new_bonds.append((a1, a2))
 
         # if the potential-motif has attachment-points only
         # then, not a valid motif
-        if valid: 
+        if valid:
             tmp_mol = get_sub_mol(self.mol, self.batch[batch_idx] + new_atoms)
             tmp_mol = sanitize(tmp_mol, kekulize=False)
-        
-        #revert trial
-        for a1,a2 in new_bonds:
+
+        # revert trial
+        for a1, a2 in new_bonds:
             self.mol.RemoveBond(a1, a2)
-        for atom in sorted(new_atoms, reverse=True): 
+        for atom in sorted(new_atoms, reverse=True):
             self.mol.RemoveAtom(atom)
 
         return valid and (tmp_mol is not None)
@@ -220,7 +243,7 @@ class IncGraph(IncBase):
     def get_atom_feature(self, atom):
         f = torch.zeros(self.avocab.size())
         symbol, charge = atom.GetSymbol(), atom.GetFormalCharge()
-        f[ self.avocab[(symbol,charge)] ] = 1
+        f[self.avocab[(symbol, charge)]] = 1
         return to_cuda(f)
 
     def get_mess_feature(self, atom, bond_type, nth_child):
@@ -228,20 +251,21 @@ class IncGraph(IncBase):
         f2 = torch.zeros(len(MolGraph.BOND_LIST))
         f3 = torch.zeros(MolGraph.MAX_POS)
         symbol, charge = atom.GetSymbol(), atom.GetFormalCharge()
-        f1[ self.avocab[(symbol,charge)] ] = 1
-        f2[ MolGraph.BOND_LIST.index(bond_type) ] = 1
-        f3[ nth_child ] = 1
-        return to_cuda(torch.cat( [f1,f2,f3], dim=-1 ))
+        f1[self.avocab[(symbol, charge)]] = 1
+        f2[MolGraph.BOND_LIST.index(bond_type)] = 1
+        f3[nth_child] = 1
+        return to_cuda(torch.cat([f1, f2, f3], dim=-1))
 
     def get_assm_cands(self, cluster, used, smiles):
         emol = get_mol(smiles)
+
         if emol.GetNumAtoms() == 1:
             attach_points = [0]
         else:
             attach_points = [atom.GetIdx() for atom in emol.GetAtoms() if atom.GetAtomMapNum() == 1]
 
         inter_size = len(attach_points)
-        idxfunc = lambda x:x.GetIdx()
+        def idxfunc(x): return x.GetIdx()
         anchors = attach_points
 
         if inter_size == 1:
@@ -249,29 +273,29 @@ class IncGraph(IncBase):
         elif inter_size == 2:
             anchor_smiles = [get_anchor_smiles(emol, a, idxfunc) for a in anchors]
         else:
-            anchors = [a for a in attach_points if is_anchor(emol.GetAtomWithIdx(a), [0])] #all attach points are labeled with 1
+            # all attach points are labeled with 1
+            anchors = [a for a in attach_points if is_anchor(emol.GetAtomWithIdx(a), [0])]
             attach_points = [a for a in attach_points if a not in anchors]
-            attach_points = [anchors[0]] + attach_points + [anchors[1]] #force the attach_points to be a chain like anchor ... anchor
+            # force the attach_points to be a chain like anchor ... anchor
+            attach_points = [anchors[0]] + attach_points + [anchors[1]]
             anchor_smiles = [get_anchor_smiles(emol, a, idxfunc) for a in anchors]
 
         assert len(anchors) <= 2
 
         if inter_size == 1:
-            cands = [ [x] for x in cluster if x not in used ]
+            cands = [[x] for x in cluster if x not in used]
 
         elif anchor_smiles[0] == anchor_smiles[1]:
             cluster2 = cluster + cluster
-            cands = [cluster2[i : i + inter_size] for i in range(len(cluster))] #not pairs if inter_size >= 3
+            cands = [cluster2[i: i + inter_size] for i in range(len(cluster))]  # not pairs if inter_size >= 3
             cands = [c for c in cands if (c[0], c[-1]) not in used
-                    and bond_match(self.mol, c[0], c[-1], emol, attach_points[0], attach_points[-1]) ] #weak matching
-        else: 
+                     and bond_match(self.mol, c[0], c[-1], emol, attach_points[0], attach_points[-1])]  # weak matching
+        else:
             cluster2 = cluster + cluster
-            cands = [cluster2[i : i + inter_size] for i in range(len(cluster))]
+            cands = [cluster2[i: i + inter_size] for i in range(len(cluster))]
             cluster2 = cluster2[::-1]
-            cands += [cluster2[i : i + inter_size] for i in range(len(cluster))]
+            cands += [cluster2[i: i + inter_size] for i in range(len(cluster))]
             cands = [c for c in cands if (c[0], c[-1]) not in used
-                    and bond_match(self.mol, c[0], c[-1], emol, attach_points[0], attach_points[-1]) ] #weak matching
+                     and bond_match(self.mol, c[0], c[-1], emol, attach_points[0], attach_points[-1])]  # weak matching
 
         return cands, anchor_smiles, attach_points
-
-

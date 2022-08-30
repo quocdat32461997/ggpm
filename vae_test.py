@@ -16,6 +16,7 @@ lg = rdkit.RDLogger.logger()
 lg.setLevel(rdkit.RDLogger.CRITICAL)
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--mode', required=True)
 parser.add_argument('--train', required=True)
 parser.add_argument('--test')
 parser.add_argument('--vocab', required=True)
