@@ -1,7 +1,7 @@
 # ggpm
 GGPM - GraphNN Generation of Photovoltaic Molecules
 
-## Property Prediction Procedure
+## Training Steps
 ### Step 1: Extracting fragment vocabs
 ```buildoutcfg
 python3 get_vocab.py --data path\to\SMILES.csv --output path\to\save\vocabs.txt
