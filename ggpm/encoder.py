@@ -237,13 +237,16 @@ class IncHierMPNEncoder(HierMPNEncoder):
         if len(subgraph[0]) + len(subgraph[1]) > 0:
             sub_graph_tensors = self.get_sub_tensor(graph_tensors, subgraph)[:-1]  # graph tensor is already embedded
             hgraph.node, hgraph.mess = self.graph_encoder(sub_graph_tensors, hgraph.mess, num_graph_nodes, subgraph)
+            del sub_graph_tensors
 
         if len(subtree[0]) + len(subtree[1]) > 0:
             sub_inter_tensors = self.embed_sub_tree(inter_tensors, hgraph.node, subtree, is_inter_layer=True)
             hinter.node, hinter.mess = self.inter_encoder(sub_inter_tensors, hinter.mess, num_tree_nodes, subtree)
+            del sub_inter_tensors
 
             sub_tree_tensors = self.embed_sub_tree(tree_tensors, hinter.node, subtree, is_inter_layer=False)
             htree.node, htree.mess = self.tree_encoder(sub_tree_tensors, htree.mess, num_tree_nodes, subtree)
+            del sub_tree_tensors
 
         return htree, hinter, hgraph
 
@@ -371,7 +374,6 @@ class IncEncoder(MotifEncoder):
         hnode = self.E_c(fnode[:, 0])
         # embed attachment
         #hmess = self.E_i(fnode[:, 1])
-        #hnode = self.W_c(torch.cat([hnode, finter], dim=-1))
 
         if len(submess) == 0: # if no parent-child pair
             hmess = fmess

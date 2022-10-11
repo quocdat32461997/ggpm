@@ -17,17 +17,15 @@ class HTuple():
 
 
 class HierMPNDecoder(nn.Module):
-
-    def __init__(self, vocab, avocab, rnn_type, embed_size, hidden_size, latent_size, depthT, depthG, dropout,
-                 attention=False):
+    def __init__(self, vocab, avocab, rnn_type, embed_size, hidden_size, latent_size, depthT, depthG, dropout, attention=False):
         super(HierMPNDecoder, self).__init__()
         self.vocab = vocab
         self.avocab = avocab
         self.hidden_size = hidden_size
         self.embed_size = embed_size
         self.latent_size = latent_size
-        self.use_attention = attention
         self.itensor = to_cuda(torch.LongTensor([]))
+        self.use_attention = attention
 
         self.hmpn = IncHierMPNEncoder(vocab, avocab, rnn_type, embed_size, hidden_size, depthT, depthG, dropout)
         self.rnn_cell = self.hmpn.tree_encoder.rnn
@@ -92,7 +90,8 @@ class HierMPNDecoder(nn.Module):
         new_bonds = []  # new bonds are the subgraph induced by new_atoms
         for zid in new_atoms:
             for nid in graph_batch[zid]:
-                if nid not in new_atom_set: continue
+                if nid not in new_atom_set:
+                    continue
                 new_bonds.append(graph_batch[zid][nid]['mess_idx'])
 
         new_bond_index = hgraph.emask.new_tensor(new_bonds)
@@ -154,7 +153,7 @@ class HierMPNDecoder(nn.Module):
             icls_scores = self.iclsNN(cls_vecs)  # no masking
         else:
             vocab_masks = self.vocab.get_mask(cls_labs)
-            icls_scores = self.iclsNN(cls_vecs) + vocab_masks  # apply mask by log(x + mask): mask=0 or -INF
+            icls_scores = self.iclsNN(cls_vecs) + to_cuda(vocab_masks)  # apply mask by log(x + mask): mask=0 or -INF
         return cls_scores, icls_scores
 
     def get_assm_score(self, src_graph_vecs, batch_idx, assm_vecs):
@@ -164,7 +163,7 @@ class HierMPNDecoder(nn.Module):
             assm_cxt = index_select_ND(src_graph_vecs, 0, batch_idx)
         return (self.W_assm(assm_vecs) * assm_cxt).sum(dim=-1)
 
-    def forward(self, src_mol_vecs, graphs, tensors, orders):
+    def forward(self, mols, src_mol_vecs, graphs, tensors, orders):
         batch_size = len(orders)
         tree_batch, graph_batch = graphs
         tree_tensors, graph_tensors = tensors
@@ -202,7 +201,7 @@ class HierMPNDecoder(nn.Module):
         for t in range(maxt):
             batch_list = [i for i in range(batch_size) if t < len(orders[i])]
             assert htree.emask[0].item() == 0 and hinter.emask[0].item() == 0 and hgraph.vmask[0].item() == 0 and \
-                   hgraph.emask[0].item() == 0
+                hgraph.emask[0].item() == 0
 
             subtree = [], []
             for i in batch_list:
@@ -230,7 +229,8 @@ class HierMPNDecoder(nn.Module):
                     mess_idx = tree_batch[xid][yid]['mess_idx']
                     new_atoms.extend(tree_batch.nodes[yid]['cluster'])  # NOTE: regardless of tlab = 0 or 1
 
-                if tlab == 0: continue
+                if tlab == 0:
+                    continue
 
                 cls = tree_batch.nodes[yid]['smiles']
                 clab, ilab = self.vocab[tree_batch.nodes[yid]['label']]
@@ -239,8 +239,8 @@ class HierMPNDecoder(nn.Module):
                 all_cls_preds.append((hmess[mess_idx], i, clab, ilab))  # cluster prediction using message
 
                 inter_label = tree_batch.nodes[yid]['inter_label']
-                inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label] # for attach
-                inter_size = self.vocab.get_inter_size(ilab)
+                inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label]  # for attach
+                #inter_size = self.vocab.get_inter_size(ilab)
 
                 if len(tree_batch.nodes[xid]['cluster']) > 2:  # uncertainty occurs only when previous cluster is a ring
                     nth_child = tree_batch[yid][xid][
@@ -259,23 +259,26 @@ class HierMPNDecoder(nn.Module):
             subgraph = self.update_graph_mask(graph_batch, new_atoms, hgraph)
 
         topo_vecs, batch_idx, topo_labels = zip_tensors(all_topo_preds)
-        topo_scores = self.get_topo_score(src_tree_vecs, batch_idx, topo_vecs)
-        topo_loss = self.topo_loss(topo_scores, topo_labels.float())
-        topo_acc = get_accuracy_bin(topo_scores, topo_labels)
+        topo_scores = self.get_topo_score(src_tree_vecs, to_cuda(batch_idx), topo_vecs)
+        topo_loss = self.topo_loss(topo_scores, to_cuda(topo_labels).float())
+        topo_acc = get_accuracy_bin(topo_scores, to_cuda(topo_labels))
 
+        # compute loss and acc: cls and icls
         cls_vecs, batch_idx, cls_labs, icls_labs = zip_tensors(all_cls_preds)
-        cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, batch_idx, cls_vecs, cls_labs)
-        cls_loss = self.cls_loss(cls_scores, cls_labs) + self.icls_loss(icls_scores, icls_labs)
-        cls_acc = get_accuracy(cls_scores, cls_labs)
-        icls_acc = get_accuracy(icls_scores, icls_labs)
+        cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, to_cuda(batch_idx), cls_vecs, cls_labs)
+        cls_loss = self.cls_loss(cls_scores, to_cuda(cls_labs)) + self.icls_loss(icls_scores, to_cuda(icls_labs))
+        cls_acc = get_accuracy(cls_scores, to_cuda(cls_labs))
+        icls_acc = get_accuracy(icls_scores, to_cuda(icls_labs))
 
+        # compute loss and acc: assm
         if len(all_assm_preds) > 0:
             assm_vecs, batch_idx, assm_labels = zip_tensors(all_assm_preds)
-            assm_scores = self.get_assm_score(src_graph_vecs, batch_idx, assm_vecs)
-            assm_loss = self.assm_loss(assm_scores, assm_labels)
-            assm_acc = get_accuracy_sym(assm_scores, assm_labels)
+            assm_scores = self.get_assm_score(src_graph_vecs, to_cuda(batch_idx), assm_vecs)
+            assm_loss = self.assm_loss(assm_scores, to_cuda(assm_labels))
+            assm_acc = get_accuracy_sym(assm_scores, to_cuda(assm_labels))
         else:
-            assm_loss, assm_acc = 0, 1
+            assm_loss = 0
+            assm_acc = 1
 
         loss = (topo_loss + cls_loss + assm_loss) / batch_size
         return loss, cls_acc, icls_acc, topo_acc, assm_acc
@@ -297,9 +300,10 @@ class HierMPNDecoder(nn.Module):
             cand_vecs = cand_vecs.view(-1, 2, self.hidden_size).sum(dim=1)
         return cand_vecs
 
-    def decode(self, src_mol_vecs, greedy=True, max_decode_step=100, beam=5):
+    def decode(self, mols, src_mol_vecs, greedy=True, max_decode_step=100, beam=5):
         src_root_vecs, src_tree_vecs, src_graph_vecs = src_mol_vecs
         batch_size = len(src_root_vecs)
+        results = [[] for _ in range(batch_size)]
 
         tree_batch = IncTree(batch_size, node_fdim=2, edge_fdim=3)
         graph_batch = IncGraph(self.avocab, batch_size, node_fdim=self.hmpn.atom_size,
@@ -311,7 +315,16 @@ class HierMPNDecoder(nn.Module):
         cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, batch_idx, init_vecs, None)
         root_cls = cls_scores.max(dim=-1)[1]
         icls_scores = icls_scores + self.vocab.get_mask(root_cls)
+        for root_idx, icls, r in zip(root_cls, icls_scores, results):
+            scores, cands = torch.sort(icls, descending=True, dim=-1)
+            # add root preds
+            r.append({'root': self.vocab.get_smiles(root_idx)})
+            r[-1]['top-5-root-attachments'] = [(self.vocab.get_ismiles(cand), score) for score, cand in
+                                               zip(scores[:5], cands[:5])]
         root_cls, root_icls = root_cls.tolist(), icls_scores.max(dim=-1)[1].tolist()
+        # add root decision
+        for r, cls, icls in zip(results, root_cls, root_icls):
+            r[-1]['Attaching Fragment'] = {'mol': cls, 'attachment': self.vocab.get_ismiles(icls)}
 
         super_root = tree_batch.add_node()
         for bid in range(batch_size):
@@ -323,6 +336,8 @@ class HierMPNDecoder(nn.Module):
             root_smiles = self.vocab.get_ismiles(ilab)
             new_atoms, new_bonds, attached = graph_batch.add_mol(bid, root_smiles, [], 0)
             tree_batch.register_cgraph(root_idx, new_atoms, new_bonds, attached)
+        for r, mol in zip(results, graph_batch.get_mol()):
+            r[-1]['partial-graph'] = mol
 
         # invariance: tree_tensors is equal to inter_tensors (but inter_tensor's init_vec is 0)
         tree_tensors = tree_batch.get_tensors()
@@ -335,8 +350,13 @@ class HierMPNDecoder(nn.Module):
         h[1: batch_size + 1] = init_vecs  # wiring root (only for tree, not inter)
 
         for t in range(max_decode_step):
+            # add results to next step
+            for r in results:
+                r.append({})
+
             batch_list = [bid for bid in range(batch_size) if len(stack[bid]) > 0]
-            if len(batch_list) == 0: break
+            if len(batch_list) == 0:
+                break
 
             batch_idx = batch_idx.new_tensor(batch_list)
             cur_tree_nodes = [stack[bid][-1] for bid in batch_list]
@@ -356,6 +376,7 @@ class HierMPNDecoder(nn.Module):
             new_mess = []
             expand_list = []
             for i, bid in enumerate(batch_list):
+                results[bid][-1]['Generate fragment'] = topo_preds[i]
                 if topo_preds[i] > 0.5 and tree_batch.can_expand(stack[bid][-1]):
                     expand_list.append((len(new_mess), bid))
                     new_node = tree_batch.add_node()  # new node label is yet to be predicted
@@ -393,8 +414,12 @@ class HierMPNDecoder(nn.Module):
                 new_node, fa_node = stack[bid][-1], stack[bid][-2]
                 success = False
                 cls_beam = range(beam) if greedy else shuf_idx[i]
+                results[bid][-1]['top-5-inter-cands'] = [(self.vocab.get_smiles(x), self.vocab.get_ismiles(y), score) for x, y, score in
+                                                         zip(cls_topk[i], icls_topk[i], scores[i])]
+
                 for kk in cls_beam:  # try until one is chemically valid
-                    if success: break
+                    if success:
+                        break
                     clab, ilab = cls_topk[i][kk], icls_topk[i][kk]
                     node_feature = batch_idx.new_tensor([clab, ilab])
                     tree_batch.set_node_feature(new_node, node_feature)
@@ -423,6 +448,8 @@ class HierMPNDecoder(nn.Module):
                             new_atoms, new_bonds, attached = graph_batch.add_mol(bid, ismiles, inter_label, nth_child)
                             tree_batch.register_cgraph(new_node, new_atoms, new_bonds, attached)
                             tree_batch.update_attached(fa_node, inter_label)
+                            results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points, inter_label, [get_anchor_smiles(
+                                Chem.MolFromSmiles(ismiles), a, lambda x: x.GetIdx()) for a in attach_points])
                             success = True
                             break
 
@@ -438,6 +465,10 @@ class HierMPNDecoder(nn.Module):
                         edge_feature = batch_idx.new_tensor([child, stack[bid][-1], nth_child])
                         new_edge = tree_batch.add_edge(child, stack[bid][-1], edge_feature)
 
+            # update partial graph
+            for mol, r in zip(graph_batch.get_mol(), results):
+                inter_label = r[-1]['Attaching Fragment'][1] if 'Attaching Fragment' in r[-1] else []
+                r[-1]['partial-graph'] = mol
         return graph_batch.get_mol()
 
 
@@ -492,7 +523,6 @@ class MotifDecoder(torch.nn.Module):
             self.A_cls = nn.Linear(hidden_size, latent_size)
             self.A_assm = nn.Linear(hidden_size, latent_size)
 
-        self.topo_loss = nn.BCEWithLogitsLoss(reduction='sum')
         self.cls_loss = nn.CrossEntropyLoss(reduction='sum')
         self.icls_loss = nn.CrossEntropyLoss(reduction='sum')
         self.assm_loss = nn.CrossEntropyLoss(reduction='sum')
@@ -521,12 +551,13 @@ class MotifDecoder(torch.nn.Module):
         return htree, new_tree_tensors
 
     def attention(self, src_vecs, batch_idx, queries, W_att):
+        print(src_vecs.shape, queries.shape, batch_idx)
         size = batch_idx.size()
         if batch_idx.dim() > 1:
             batch_idx = batch_idx.view(-1)
             queries = queries.view(-1, queries.size(-1))
-
         src_vecs = src_vecs.index_select(0, batch_idx)
+        print(src_vecs.shape, queries.shape)
         att_score = torch.bmm(src_vecs, W_att(queries).unsqueeze(-1))
         att_vecs = F.softmax(att_score, dim=1) * src_vecs
         att_vecs = att_vecs.sum(dim=1)
@@ -581,7 +612,7 @@ class MotifDecoder(torch.nn.Module):
         order_vecs = self.E_order.index_select(0, nth_child)
 
         # print('icls_vecs', icls_vecs.size(), 'order_vecs', order_vecs.size())
-        #cand_vecs = hgraph.node.index_select(0, cands.view(-1)) # get atom-embed of attachment points
+        # cand_vecs = hgraph.node.index_select(0, cands.view(-1)) # get atom-embed of attachment points
         cand_vecs = torch.cat([icls_vecs, order_vecs], dim=-1)
         cand_vecs = self.matchNN(cand_vecs)
 
@@ -659,7 +690,8 @@ class MotifDecoder(torch.nn.Module):
                     mess_idx = tree_batch[xid][yid]['mess_idx']
                     new_atoms.extend(tree_batch.nodes[yid]['cluster'])  # NOTE: regardless of tlab = 0 or 1
 
-                if tlab == 0: continue
+                if tlab == 0:
+                    continue
 
                 # get next labels (motif, attachment) at t step
                 # and predict next motif and attachment at t step
@@ -676,7 +708,8 @@ class MotifDecoder(torch.nn.Module):
                 # graph prediction = inter-candidate prediction
                 # try:
                 if len(tree_batch.nodes[xid]['cluster']) > 2:  # uncertainty occurs only when previous cluster is a ring
-                    nth_child = tree_batch[yid][xid]['label']  # must be yid -> xid (graph order labeling is different from tree)
+                    # must be yid -> xid (graph order labeling is different from tree)
+                    nth_child = tree_batch[yid][xid]['label']
                     cands = tree_batch.nodes[yid]['assm_cands']
                     icls = list(zip(*inter_label))[1]
                     # print(t, nth_child, len(cands), len(icls))
@@ -709,7 +742,8 @@ class MotifDecoder(torch.nn.Module):
         for pred_batch in all_cls_preds:
             cls_vecs, batch_idx, cls_labs, icls_labs = zip_tensors(pred_batch)
             cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, to_cuda(batch_idx), cls_vecs, cls_labs)
-            cls_loss.append(self.cls_loss(cls_scores, to_cuda(cls_labs)) + self.icls_loss(icls_scores, to_cuda(icls_labs)))
+            cls_loss.append(self.cls_loss(cls_scores, to_cuda(cls_labs)) +
+                            self.icls_loss(icls_scores, to_cuda(icls_labs)))
             cls_acc.append((cls_scores, to_cuda(cls_labs)))
             icls_acc.append((icls_scores, to_cuda(icls_labs)))
         cls_acc = zip_tensors(cls_acc, is_concat=True)
@@ -802,7 +836,8 @@ class MotifDecoder(torch.nn.Module):
                     mess_idx = tree_batch[xid][yid]['mess_idx']
                     new_atoms.extend(tree_batch.nodes[yid]['cluster'])  # NOTE: regardless of tlab = 0 or 1
 
-                if tlab == 0: continue
+                if tlab == 0:
+                    continue
 
                 # get next labels (motif, attachment) at t step
                 # and predict next motif and attachment at t step
@@ -817,9 +852,10 @@ class MotifDecoder(torch.nn.Module):
                 inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label]
 
                 # graph prediction = inter-candidate prediction
-                #try:
+                # try:
                 if len(tree_batch.nodes[xid]['cluster']) > 2:  # uncertainty occurs only when previous cluster is a ring
-                    nth_child = tree_batch[yid][xid]['label']  # must be yid -> xid (graph order labeling is different from tree)
+                    # must be yid -> xid (graph order labeling is different from tree)
+                    nth_child = tree_batch[yid][xid]['label']
                     cands = tree_batch.nodes[yid]['assm_cands']
                     icls = list(zip(*inter_label))[1]
                     # print(t, nth_child, len(cands), len(icls))
@@ -832,7 +868,7 @@ class MotifDecoder(torch.nn.Module):
                     # batch_idx = hgraph.emask.new_tensor( [i] * max_cls_size )
                     batch_idx = hgraph.emask.new_tensor([i] * max_cls_size)
                     all_assm_preds.append((cand_vecs, batch_idx, 0))  # the label is always the first of assm_cands
-                #except Exception as e:
+                # except Exception as e:
                 #    print('batch-idx', mols[i])
                 #    continue
 
@@ -878,17 +914,18 @@ class MotifDecoder(torch.nn.Module):
         init_vecs = src_root_vecs if self.latent_size == self.hidden_size else self.W_root(src_root_vecs)
         batch_idx = self.itensor.new_tensor(range(batch_size))
         cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, batch_idx, init_vecs, None)
-        #for r, cls, icls in zip(results, cls_scores, icls_scores):
+        # for r, cls, icls in zip(results, cls_scores, icls_scores):
         #    r.append({'Top 5 super-root-idxs (aka blank roots that wont exist in the root fragments)': torch.sort(cls, descending=True, dim=-1)[1][:5]})
 
         root_cls = cls_scores.max(dim=-1)[1].to('cpu')
-        icls_scores = icls_scores.to('cpu') + self.vocab.get_mask(root_cls) # mask to get possible attachment points only
+        # mask to get possible attachment points only
+        icls_scores = icls_scores.to('cpu') + self.vocab.get_mask(root_cls)
         for root_idx, icls, r in zip(root_cls, icls_scores, results):
             scores, cands = torch.sort(icls, descending=True, dim=-1)
             # add root preds
             r.append({'root': self.vocab.get_smiles(root_idx)})
             r[-1]['top-5-root-attachments'] = [(self.vocab.get_ismiles(cand), score) for score, cand in
-                                                      zip(scores[:5], cands[:5])]
+                                               zip(scores[:5], cands[:5])]
         root_cls, root_icls = root_cls.tolist(), icls_scores.max(dim=-1)[1].tolist()
         # add root decision
         for r, cls, icls in zip(results, root_cls, root_icls):
@@ -898,7 +935,7 @@ class MotifDecoder(torch.nn.Module):
         super_root = tree_batch.add_node()
         for bid in range(batch_size):
             clab, ilab = root_cls[bid], root_icls[bid]
-            root_idx = tree_batch.add_node(batch_idx.new_tensor([clab, ilab])) # add node w/ feature
+            root_idx = tree_batch.add_node(batch_idx.new_tensor([clab, ilab]))  # add node w/ feature
             tree_batch.add_edge(super_root, root_idx)   # add edge of super-root and root
             stack[bid].append(root_idx)     # add root to stack
 
@@ -926,13 +963,16 @@ class MotifDecoder(torch.nn.Module):
 
             # stop decoding if stack is empty
             batch_list = [bid for bid in range(batch_size) if len(stack[bid]) > 0]
-            if len(batch_list) == 0: break
+            if len(batch_list) == 0:
+                break
 
             # get the latest child
             batch_idx = batch_idx.new_tensor(batch_list)
             cur_tree_nodes = [stack[bid][-1] for bid in batch_list]     # get node indices
-            subtree = batch_idx.new_tensor(cur_tree_nodes), batch_idx.new_tensor([])        # tuple of node-idx and message-idx
-            subgraph = batch_idx.new_tensor(tree_batch.get_cluster_nodes(cur_tree_nodes)), batch_idx.new_tensor( tree_batch.get_cluster_edges(cur_tree_nodes))
+            subtree = batch_idx.new_tensor(cur_tree_nodes), batch_idx.new_tensor(
+                [])        # tuple of node-idx and message-idx
+            subgraph = batch_idx.new_tensor(tree_batch.get_cluster_nodes(cur_tree_nodes)
+                                            ), batch_idx.new_tensor(tree_batch.get_cluster_edges(cur_tree_nodes))
 
             # get latest subtree's representation
             htree = self.hmpn(tree_tensors, htree, subtree)
@@ -977,7 +1017,8 @@ class MotifDecoder(torch.nn.Module):
                 idx_in_mess = batch_idx.new_tensor(idx_in_mess)
                 expand_idx = batch_idx.new_tensor(expand_list)
                 forward_mess = cur_mess.index_select(0, idx_in_mess)
-                cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, expand_idx, forward_mess, None) # predict fragments and their possible fragment configs
+                # predict fragments and their possible fragment configs
+                cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, expand_idx, forward_mess, None)
                 scores, cls_topk, icls_topk = hier_topk(cls_scores.to('cpu'), icls_scores.to('cpu'), self.vocab, beam)
                 if not greedy:
                     scores = torch.exp(scores)  # score is output of log softmax
@@ -991,16 +1032,18 @@ class MotifDecoder(torch.nn.Module):
                 cls_beam = range(beam) if greedy else shuf_idx[i]
 
                 results[bid][-1]['top-5-inter-cands'] = [(self.vocab.get_smiles(x), self.vocab.get_ismiles(y), score) for x, y, score in
-                                                              zip(cls_topk[i], icls_topk[i], scores[i])]
+                                                         zip(cls_topk[i], icls_topk[i], scores[i])]
                 try:
                     for kk in cls_beam:  # try until one is chemically valid
-                        if success: break
+                        if success:
+                            break
                         clab, ilab = cls_topk[i][kk], icls_topk[i][kk]
                         node_feature = batch_idx.new_tensor([clab, ilab])
                         tree_batch.set_node_feature(new_node, node_feature)
                         smiles, ismiles = self.vocab.get_smiles(clab), self.vocab.get_ismiles(ilab)
                         fa_cluster, _, fa_used = tree_batch.get_cluster(fa_node)
-                        inter_cands, anchor_smiles, attach_points = graph_batch.get_assm_cands(fa_cluster, fa_used, ismiles)
+                        inter_cands, anchor_smiles, attach_points = graph_batch.get_assm_cands(
+                            fa_cluster, fa_used, ismiles)
 
                         if len(inter_cands) == 0:
                             continue
@@ -1021,10 +1064,12 @@ class MotifDecoder(torch.nn.Module):
                             inter_label = list(zip(inter_label, attach_points))
                             if graph_batch.try_add_mol(bid, ismiles, inter_label):
                                 #print('batch', bid, mols[bid], 'inter-label', inter_label)
-                                new_atoms, new_bonds, attached = graph_batch.add_mol(bid, ismiles, inter_label, nth_child)
+                                new_atoms, new_bonds, attached = graph_batch.add_mol(
+                                    bid, ismiles, inter_label, nth_child)
                                 tree_batch.register_cgraph(new_node, new_atoms, new_bonds, attached)
                                 tree_batch.update_attached(fa_node, inter_label)
-                                results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points, inter_label, [get_anchor_smiles(Chem.MolFromSmiles(ismiles), a, lambda x: x.GetIdx()) for a in attach_points])
+                                results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points, inter_label, [get_anchor_smiles(
+                                    Chem.MolFromSmiles(ismiles), a, lambda x: x.GetIdx()) for a in attach_points])
                                 success = True
                                 break
                 except Exception as e:
@@ -1059,7 +1104,7 @@ class MotifSchedulingDecoder(torch.nn.Module):
         self.latent_size = latent_size
         self.use_attention = attention
         self.itensor = to_cuda(torch.LongTensor([]))
-        self.teacher_forcing_ratio = 1 # decrease by 1 / num_epoch
+        self.teacher_forcing_ratio = 1  # decrease by 1 / num_epoch
         self.random = random.Random(seed)
 
         self.hmpn = IncEncoder(vocab, avocab, rnn_type, embed_size, hidden_size, depthT, depthG, dropout)
@@ -1200,7 +1245,7 @@ class MotifSchedulingDecoder(torch.nn.Module):
         order_vecs = self.E_order.index_select(0, nth_child)
 
         # print('icls_vecs', icls_vecs.size(), 'order_vecs', order_vecs.size())
-        #cand_vecs = hgraph.node.index_select(0, cands.view(-1)) # get atom-embed of attachment points
+        # cand_vecs = hgraph.node.index_select(0, cands.view(-1)) # get atom-embed of attachment points
         cand_vecs = torch.cat([icls_vecs, order_vecs], dim=-1)
         cand_vecs = self.matchNN(cand_vecs)
 
@@ -1272,10 +1317,11 @@ class MotifSchedulingDecoder(torch.nn.Module):
                     subtree[0].append(self.all_topk_cls_preds[i])
 
                     # add edge
-                    if orders[i][t][1] is None: # at leaf node, stop predicting
+                    if orders[i][t][1] is None:  # at leaf node, stop predicting
                         pass
                     else:
-                        subtree[1].append(par_chi_bond[i]) # always connect, mess_idx = 1. at least for the motif right after root
+                        # always connect, mess_idx = 1. at least for the motif right after root
+                        subtree[1].append(par_chi_bond[i])
                 else:
                     # use reference
                     xid, yid, tlab = orders[i][t]  # tlab flag denote the parent-child relationship
@@ -1306,7 +1352,8 @@ class MotifSchedulingDecoder(torch.nn.Module):
                     mess_idx = tree_batch[xid][yid]['mess_idx']
                     new_atoms.extend(tree_batch.nodes[yid]['cluster'])  # NOTE: regardless of tlab = 0 or 1
 
-                if tlab == 0: continue
+                if tlab == 0:
+                    continue
 
                 # get next labels (motif, attachment) at t step
                 # and predict next motif and attachment at t step
@@ -1321,9 +1368,10 @@ class MotifSchedulingDecoder(torch.nn.Module):
                 inter_label = [(pos, self.vocab[(cls, icls)][1]) for pos, icls in inter_label]
 
                 # graph prediction = inter-candidate prediction
-                #try:
+                # try:
                 if len(tree_batch.nodes[xid]['cluster']) > 2:  # uncertainty occurs only when previous cluster is a ring
-                    nth_child = tree_batch[yid][xid]['label']  # must be yid -> xid (graph order labeling is different from tree)
+                    # must be yid -> xid (graph order labeling is different from tree)
+                    nth_child = tree_batch[yid][xid]['label']
                     cands = tree_batch.nodes[yid]['assm_cands']
                     icls = list(zip(*inter_label))[1]
                     # print(t, nth_child, len(cands), len(icls))
@@ -1336,7 +1384,7 @@ class MotifSchedulingDecoder(torch.nn.Module):
                     # batch_idx = hgraph.emask.new_tensor( [i] * max_cls_size )
                     batch_idx = hgraph.emask.new_tensor([i] * max_cls_size)
                     all_assm_preds.append((cand_vecs, batch_idx, 0))  # the label is always the first of assm_cands
-                #except Exception as e:
+                # except Exception as e:
                 #    print('batch-idx', mols[i])
                 #    continue
 
@@ -1379,17 +1427,18 @@ class MotifSchedulingDecoder(torch.nn.Module):
         init_vecs = src_root_vecs if self.latent_size == self.hidden_size else self.W_root(src_root_vecs)
         batch_idx = self.itensor.new_tensor(range(batch_size))
         cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, batch_idx, init_vecs, None)
-        #for r, cls, icls in zip(results, cls_scores, icls_scores):
+        # for r, cls, icls in zip(results, cls_scores, icls_scores):
         #    r.append({'Top 5 super-root-idxs (aka blank roots that wont exist in the root fragments)': torch.sort(cls, descending=True, dim=-1)[1][:5]})
 
         root_cls = cls_scores.max(dim=-1)[1].to('cpu')
-        icls_scores = icls_scores.to('cpu') + self.vocab.get_mask(root_cls) # mask to get possible attachment points only
+        # mask to get possible attachment points only
+        icls_scores = icls_scores.to('cpu') + self.vocab.get_mask(root_cls)
         for root_idx, icls, r in zip(root_cls, icls_scores, results):
             scores, cands = torch.sort(icls, descending=True, dim=-1)
             # add root preds
             r.append({'root': self.vocab.get_smiles(root_idx)})
             r[-1]['top-5-root-attachments'] = [(self.vocab.get_ismiles(cand), score) for score, cand in
-                                                      zip(scores[:5], cands[:5])]
+                                               zip(scores[:5], cands[:5])]
         root_cls, root_icls = root_cls.tolist(), icls_scores.max(dim=-1)[1].tolist()
         # add root decision
         for r, cls, icls in zip(results, root_cls, root_icls):
@@ -1399,7 +1448,7 @@ class MotifSchedulingDecoder(torch.nn.Module):
         super_root = tree_batch.add_node()
         for bid in range(batch_size):
             clab, ilab = root_cls[bid], root_icls[bid]
-            root_idx = tree_batch.add_node(batch_idx.new_tensor([clab, ilab])) # add node w/ feature
+            root_idx = tree_batch.add_node(batch_idx.new_tensor([clab, ilab]))  # add node w/ feature
             tree_batch.add_edge(super_root, root_idx)   # add edge of super-root and root
             stack[bid].append(root_idx)     # add root to stack
 
@@ -1427,13 +1476,16 @@ class MotifSchedulingDecoder(torch.nn.Module):
 
             # stop decoding if stack is empty
             batch_list = [bid for bid in range(batch_size) if len(stack[bid]) > 0]
-            if len(batch_list) == 0: break
+            if len(batch_list) == 0:
+                break
 
             # get the latest child
             batch_idx = batch_idx.new_tensor(batch_list)
             cur_tree_nodes = [stack[bid][-1] for bid in batch_list]     # get node indices
-            subtree = batch_idx.new_tensor(cur_tree_nodes), batch_idx.new_tensor([])        # tuple of node-idx and message-idx
-            subgraph = batch_idx.new_tensor(tree_batch.get_cluster_nodes(cur_tree_nodes)), batch_idx.new_tensor( tree_batch.get_cluster_edges(cur_tree_nodes))
+            subtree = batch_idx.new_tensor(cur_tree_nodes), batch_idx.new_tensor(
+                [])        # tuple of node-idx and message-idx
+            subgraph = batch_idx.new_tensor(tree_batch.get_cluster_nodes(cur_tree_nodes)
+                                            ), batch_idx.new_tensor(tree_batch.get_cluster_edges(cur_tree_nodes))
 
             # get latest subtree's representation
             htree = self.hmpn(tree_tensors, htree, subtree)
@@ -1478,7 +1530,8 @@ class MotifSchedulingDecoder(torch.nn.Module):
                 idx_in_mess = batch_idx.new_tensor(idx_in_mess)
                 expand_idx = batch_idx.new_tensor(expand_list)
                 forward_mess = cur_mess.index_select(0, idx_in_mess)
-                cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, expand_idx, forward_mess, None) # predict fragments and their possible fragment configs
+                # predict fragments and their possible fragment configs
+                cls_scores, icls_scores = self.get_cls_score(src_tree_vecs, expand_idx, forward_mess, None)
                 scores, cls_topk, icls_topk = hier_topk(cls_scores.to('cpu'), icls_scores.to('cpu'), self.vocab, beam)
                 if not greedy:
                     scores = torch.exp(scores)  # score is output of log softmax
@@ -1492,9 +1545,10 @@ class MotifSchedulingDecoder(torch.nn.Module):
                 cls_beam = range(beam) if greedy else shuf_idx[i]
 
                 results[bid][-1]['top-5-inter-cands'] = [(self.vocab.get_smiles(x), self.vocab.get_ismiles(y), score) for x, y, score in
-                                                              zip(cls_topk[i], icls_topk[i], scores[i])]
+                                                         zip(cls_topk[i], icls_topk[i], scores[i])]
                 for kk in cls_beam:  # try until one is chemically valid
-                    if success: break
+                    if success:
+                        break
                     clab, ilab = cls_topk[i][kk], icls_topk[i][kk]
                     node_feature = batch_idx.new_tensor([clab, ilab])
                     tree_batch.set_node_feature(new_node, node_feature)
@@ -1520,15 +1574,16 @@ class MotifSchedulingDecoder(torch.nn.Module):
                     for inter_label, _ in sorted_cands:
                         inter_label = list(zip(inter_label, attach_points))
                         if graph_batch.try_add_mol(bid, ismiles, inter_label):
-                            #try
+                            # try
                             #print('batch', bid, mols[bid], 'inter-label', inter_label)
                             new_atoms, new_bonds, attached = graph_batch.add_mol(bid, ismiles, inter_label, nth_child)
                             tree_batch.register_cgraph(new_node, new_atoms, new_bonds, attached)
                             tree_batch.update_attached(fa_node, inter_label)
-                            results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points, inter_label, [get_anchor_smiles(Chem.MolFromSmiles(ismiles), a, lambda x: x.GetIdx()) for a in attach_points])
+                            results[bid][-1]['Attaching Fragment'] = (ismiles, attach_points, inter_label, [get_anchor_smiles(
+                                Chem.MolFromSmiles(ismiles), a, lambda x: x.GetIdx()) for a in attach_points])
                             success = True
                             break
-                            #except Exception as e:
+                            # except Exception as e:
                             #    break
 
                 if not success:  # force backtrack

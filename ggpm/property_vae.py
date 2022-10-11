@@ -1,8 +1,8 @@
 import torch
 import numpy as np
 
-from ggpm.encoder import MotifEncoder
-from ggpm.decoder import MotifDecoder, MotifSchedulingDecoder
+from ggpm.encoder import MotifEncoder, HierMPNEncoder
+from ggpm.decoder import MotifDecoder, MotifSchedulingDecoder, HierMPNDecoder
 from ggpm.property_optimizer import PropertyOptimizer
 from ggpm.loss_weigh import *
 from ggpm.nnutils import *
@@ -22,6 +22,60 @@ def make_cuda(tensors):
     tree_tensors = [make_tensor(x).long() for x in tree_tensors[:-1]] + [tree_tensors[-1]]
     graph_tensors = [make_tensor(x).long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
     return tree_tensors, graph_tensors
+
+
+class HierPropertyVAE(nn.Module):
+    def __init__(self, args):
+        super(HierPropertyVAE, self).__init__()
+        self.encoder = HierMPNEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.depthT, args.depthG, args.dropout)
+        self.decoder = HierMPNDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.latent_size, args.diterT, args.diterG, args.dropout)
+
+        if args.tie_embedding:
+            self.encoder.tie_embedding(self.decoder.hmpn)
+        self.latent_size = args.latent_size
+
+        self.R_mean = nn.Linear(args.hidden_size, args.latent_size)
+        self.R_var = nn.Linear(args.hidden_size, args.latent_size)
+
+    def rsample(self, z_vecs, W_mean, W_var, perturb=True):
+        batch_size = z_vecs.size(0)
+        z_mean = W_mean(z_vecs)
+        z_log_var = -torch.abs(W_var(z_vecs))
+        kl_loss = -0.5 * torch.sum(1.0 + z_log_var - z_mean * z_mean - torch.exp(z_log_var)) / batch_size
+        epsilon = to_cuda(torch.randn_like(z_mean))
+        z_vecs = z_mean + torch.exp(z_log_var / 2) * epsilon if perturb else z_mean
+        return z_vecs, kl_loss
+
+    def sample(self, batch_size):
+        root_vecs = to_cuda(torch.randn(batch_size, self.latent_size))
+        return self.decoder.decode((root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
+
+    def reconstruct(self, batch, args):
+        mols, _, tensors, _, _, _ = batch
+        tree_tensors, graph_tensors = tensors = make_cuda(tensors)
+        root_vecs, _, _, _ = self.encoder(tree_tensors, graph_tensors)
+
+        root_vecs, _ = self.rsample(root_vecs, self.R_mean, self.R_var, perturb=False)
+        return self.decoder.decode(mols, (root_vecs, root_vecs, root_vecs), greedy=True, max_decode_step=150)
+
+    def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
+        tree_tensors, graph_tensors = tensors = make_cuda(tensors)
+
+        root_vecs, _, _, _ = self.encoder(tree_tensors, graph_tensors)
+
+        root_vecs, kl_div = self.rsample(root_vecs, self.R_mean, self.R_var, perturb_z)
+        # tree_vecs, tree_kl = self.rsample(tree_vecs, self.T_mean, self.T_var, perturb_z)
+        # graph_vecs, graph_kl = self.rsample(graph_vecs, self.G_mean, self.G_var, perturb_z)
+        # kl_div = root_kl  # + tree_kl + graph_kl
+
+        # modify molecules
+        loss, wacc, iacc, tacc, sacc = self.decoder(mols, (root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
+
+        loss += beta * kl_div
+        return loss, {'Loss': loss.item(), 'KL:': kl_div.item(),
+                      'Word': wacc.item(), 'I-Word': iacc.item(), 'Topo': tacc.item(), 'Assm': sacc.item()}, False
 
 
 class PropertyVAE(torch.nn.Module):
@@ -90,15 +144,15 @@ class PropertyVAE(torch.nn.Module):
                       'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}, False
 
 
-class PropOptVAE(torch.nn.Module):
+class HierPropOptVAE(torch.nn.Module):
     def __init__(self, args):
-        super(PropOptVAE, self).__init__()
-        self.encoder = MotifEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
-                                    args.depthT, args.depthG, args.dropout)
-        self.decoder = MotifDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
-                                    args.latent_size, args.diterT, args.diterG, args.dropout)
+        super(HierPropOptVAE, self).__init__()
+        self.encoder = HierMPNEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.depthT, args.depthG, args.dropout)
+        self.decoder = HierMPNDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                      args.latent_size, args.diterT, args.diterG, args.dropout)
 
-        self.latent_size = args.latent_size // 2 #define property optimizer
+        self.latent_size = args.latent_size // 2  # define property optimizer
         self.property_optim = PropertyOptimizer(input_size=self.latent_size,
                                                 hidden_size=args.linear_hidden_size,
                                                 dropout=args.dropout)
@@ -139,7 +193,131 @@ class PropOptVAE(torch.nn.Module):
         # add gaussian noise
         root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
 
-        latent_vecs = root_vecs.clone()  # torch.cat([root_vecs, root_vecs.clone()], dim=-1)# find new latent vector that optimize HOMO & LUMO properties
+        # torch.cat([root_vecs, root_vecs.clone()], dim=-1)# find new latent vector that optimize HOMO & LUMO properties
+        latent_vecs = root_vecs.clone()
+        # root_vecs, _, property_outputs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
+        #                                                              args=args)
+        property_outputs = self.property_optim.predict(homo_vecs=latent_vecs[:, :self.latent_size],
+                                                       lumo_vecs=latent_vecs[:, self.latent_size:])
+
+        # extract property outputs
+        return property_outputs, self.decoder.decode(mols, tuple([root_vecs] * 3),
+                                                     greedy=True, max_decode_step=150)
+
+    def optimize_recs(self, batch, args):
+        mols, graphs, tensors, _, homos, lumos = batch
+        tree_tensors, _ = make_cuda(tensors)
+
+        # encode
+        root_vecs, tree_vecs = self.encoder(tree_tensors)
+
+        # add gaussian noise
+        root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
+
+        # optimize properties
+        root_vecs, homo_prop, lumo_prop = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos))
+
+        return [homo_prop, lumo_prop], self.decoder.decode(mols, (root_vecs, root_vecs, root_vecs),
+                                                           greedy=True, max_decode_step=150)
+
+    def clip_negative_loss(self, loss):
+        if loss > 0:
+            return False, loss
+        else:
+            return True, loss * 0 + torch.normal(mean=0.5, std=0.5, size=loss.size(), dtype=loss.dtype,
+                                                 device=loss.device)
+
+    def forward(self, mols, graphs, tensors, orders, homos, lumos, beta, perturb_z=True):
+        tree_tensors, graph_tensors = tensors = make_cuda(tensors)
+        homos, lumos = make_tensor(homos), make_tensor(lumos)
+
+        # encode
+        root_vecs, _, _, _ = self.encoder(tree_tensors, graph_tensors)
+
+        # sampling latent vectors
+        root_vecs, kl_div = self.rsample(root_vecs, perturb_z)
+
+        # predict HOMO & LUMO
+        latent_vecs = root_vecs.clone()  # torch.cat([root_vecs, root_vecs.clone()], dim=-1)
+        homo_loss, lumo_loss, _, _ = self.property_optim(homo_vecs=latent_vecs[:, :self.latent_size],
+                                                         lumo_vecs=latent_vecs[:, self.latent_size:],
+                                                         targets=(homos, lumos))
+
+        # decode
+        loss, wacc, iacc, tacc, sacc = self.decoder(mols, (root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
+
+        # sum-up loss
+        loss += beta * kl_div
+
+        # since loss-scaling may lead to negative loss
+        # hence, separate each loss term and clip individually
+        if self.loss_scaling:
+            loss = self.loss_weigh.compute_recon_loss(loss)
+            homo_loss, lumo_loss = self.loss_weigh.compute_prop_loss(homo_loss, lumo_loss)
+
+        total_loss = loss + homo_loss + lumo_loss
+        loss_clipped, total_loss = self.clip_negative_loss(total_loss)
+
+        return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.item(), 'Recs_Loss': loss.item(),
+                            'HOMO_MSE': homo_loss.item(), 'LUMO_MSE': lumo_loss.item(), 'Word': wacc, 'I-Word': iacc,
+                            'Topo': tacc, 'Assm': sacc}, \
+            True if loss_clipped else False
+
+
+class PropOptVAE(torch.nn.Module):
+    def __init__(self, args):
+        super(PropOptVAE, self).__init__()
+        self.encoder = MotifEncoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                    args.depthT, args.depthG, args.dropout)
+        self.decoder = MotifDecoder(args.vocab, args.atom_vocab, args.rnn_type, args.embed_size, args.hidden_size,
+                                    args.latent_size, args.diterT, args.diterG, args.dropout)
+
+        # tie embedding
+        self.encoder.tie_embedding(self.decoder.hmpn)
+
+        self.latent_size = args.latent_size // 2  # define property optimizer
+        self.property_optim = PropertyOptimizer(input_size=self.latent_size,
+                                                hidden_size=args.linear_hidden_size,
+                                                dropout=args.dropout)
+
+        if args.tie_embedding:
+            self.encoder.tie_embedding(self.decoder.hmpn)
+        self.property_optim_step = args.property_optim_step
+
+        # gaussian noise
+        self.R_mean = torch.nn.Linear(args.hidden_size, args.latent_size)
+        self.R_var = torch.nn.Linear(args.hidden_size, args.latent_size)
+
+        # setup loss-scaling
+        self.loss_scaling = False
+        try:
+            if args.loss_scaling:
+                self.loss_scaling = True
+                self.loss_weigh = LossWeigh()
+        except:
+            pass
+
+    def rsample(self, z_vecs, perturb=True):
+        batch_size = z_vecs.size(0)
+        z_mean = self.R_mean(z_vecs)
+        z_log_var = -1 * torch.abs(self.R_var(z_vecs))
+        kl_loss = -0.5 * torch.sum(1.0 + z_log_var - z_mean * z_mean - torch.exp(z_log_var)) / batch_size
+        epsilon = to_cuda(torch.randn_like(z_mean))
+        z_vecs = z_mean + torch.exp(z_log_var / 2) * epsilon if perturb else z_mean
+        return z_vecs, kl_loss
+
+    def reconstruct(self, batch, args):
+        mols, graphs, tensors, _, homos, lumos = batch
+        tree_tensors, _ = make_cuda(tensors)
+
+        # encode
+        root_vecs, tree_vecs = self.encoder(tree_tensors)
+
+        # add gaussian noise
+        root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
+
+        # torch.cat([root_vecs, root_vecs.clone()], dim=-1)# find new latent vector that optimize HOMO & LUMO properties
+        latent_vecs = root_vecs.clone()
         # root_vecs, _, property_outputs = self.property_optim.optimize(root_vecs=root_vecs, targets=(homos, lumos),
         #                                                              args=args)
         property_outputs = self.property_optim.predict(homo_vecs=latent_vecs[:, :self.latent_size],
@@ -223,7 +401,7 @@ class PropOptVAE(torch.nn.Module):
         return total_loss, {'Loss': total_loss.item(), 'KL': kl_div.item(), 'Recs_Loss': loss.item(),
                             'HOMO_MSE': homo_loss.item(), 'LUMO_MSE': lumo_loss.item(), 'Word': wacc, 'I-Word': iacc,
                             'Topo': tacc, 'Assm': sacc}, \
-               True if loss_clipped else False
+            True if loss_clipped else False
 
         total_loss = loss + homo_loss + lumo_loss
         loss_clipped, total_loss = self.clip_negative_loss(total_loss)

@@ -20,7 +20,7 @@ class PropertyVAEOptimizer(nn.Module):
         self.optimize_type = args.optimize_type
         self.property_delta = args.property_delta
         self.patience_threshold = args.patience_threshold
-        self.lr = args.lr
+        self.lr = args.latent_lr
         self.func_dict = {'fixed': self.hard_optimize,
                      'patience': self.patience_optimize,
                      'soft': self.soft_optimize}
@@ -117,7 +117,10 @@ class PropertyVAEOptimizer(nn.Module):
         # Function to optimize homo_vecs and lumo_vecs until no patience
 
         h_vecs, l_vecs = [], []
+        idx = 0
         for h_vec, l_vec, h_tar, l_tar in zip(homo_vecs, lumo_vecs, homo_targets, lumo_targets):
+            print(idx)
+            idx += 1
             # loop until patience hits 0 or total_loss less than delta to avoid infinite loop
             prev_loss, patience = 0, self.patience
             while patience > 0:

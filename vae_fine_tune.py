@@ -3,9 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 
-import math
-import random
-import sys
+import math, random, sys
 import numpy as np
 import argparse
 
@@ -34,16 +32,16 @@ args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
 args.to_json(args.save_dir + '/configs.json')
 
 # load model
-model_class = HierPropertyVAE
+model_class = HierPropOptVAE
 model = to_cuda(model_class(args))
 
 # load saved encoder only
 if args.saved_model:
     if args.load_encoder_only is True:
-        model = copy_encoder(model, PropertyVAE(args), args.saved_model)
+        model = copy_encoder(model, HierPropertyVAE(args), args.saved_model)
         print('Successfully copied encoder weights.')
-    else:  # default to load entire encoder-decoder model
-        model = copy_model(model, PropertyVAE(args), args.saved_model, w_property=args.load_property_head)
+    else: # default to load entire encoder-decoder model
+        model = copy_model(model, HierPropertyVAE(args), args.saved_model, w_property=args.load_property_head)
         print('Successfully copied encoder-decoder weights.')
 
 else:
@@ -61,13 +59,10 @@ print("Model #Params: %dK" % (sum([x.nelement() for x in model.parameters()]) / 
 optimizer = optim.Adam(model.parameters(), lr=args.lr)
 scheduler = lr_scheduler.ExponentialLR(optimizer, args.anneal_rate)
 if args.early_stopping:
-    early_stopping = EarlyStopping(patience=5, verbose=True, delta=0.01,
-                                   path=args.save_dir + '/model.{}'.format('best'))
+    early_stopping = EarlyStopping(patience=5, verbose=True, delta=0.01, path=args.save_dir + '/model.{}'.format('best'))
 
-
-def param_norm(m): return math.sqrt(sum([p.norm().item() ** 2 for p in m.parameters()]))
-def grad_norm(m): return math.sqrt(sum([p.grad.norm().item() ** 2 for p in m.parameters() if p.grad is not None]))
-
+param_norm = lambda m: math.sqrt(sum([p.norm().item() ** 2 for p in m.parameters()]))
+grad_norm = lambda m: math.sqrt(sum([p.grad.norm().item() ** 2 for p in m.parameters() if p.grad is not None]))
 
 total_step = 0
 beta = args.beta
@@ -98,12 +93,10 @@ for epoch in range(args.load_epoch + 1, args.epoch):
         for k, v in metrics_.items():
             metrics[k] = v if not k in metrics else metrics[k] + v
 
-        #print(torch.cuda.memory_allocated(device) / torch.cuda.max_memory_allocated(device))
-        #continue
         if total_step % args.print_iter == 0:
-            metrics = {k: v / args.print_iter for k, v in metrics.items()}
+            metrics = {k: v / args.print_iter for k,v in metrics.items()}
             print("[%d] Beta: %.3f, PNorm: %.2f, GNorm: %.2f" % (
-                total_step, beta,  param_norm(model), grad_norm(model)))  # print step
+                total_step, beta,  param_norm(model), grad_norm(model))) # print step
 
             # print metrics
             print(', '.join([k + ': %.3f' % v for k, v in metrics.items()]))
@@ -118,9 +111,6 @@ for epoch in range(args.load_epoch + 1, args.epoch):
             scheduler.step()
             print("learning rate: %.6f" % scheduler.get_lr()[0])
 
-        #torch.cuda.empty_cache()
-        #print(torch.cuda.memory_allocated(device) / torch.cuda.max_memory_allocated(device))
-        #continue
         # evaluate
         if total_step % args.eval_iter == 0:
             model.eval()
@@ -150,12 +140,12 @@ for epoch in range(args.load_epoch + 1, args.epoch):
                 early_stopping(val_loss, model)
                 if early_stopping.early_stop:
                     break
-        del loss, loss_clipped, metrics_
-        torch.cuda.empty_cache()
 
     if loss_clip_break:
+        print('Stop due to loss_clip_break')
         break
     if args.early_stopping and early_stopping.early_stop:
+        print('Stop: early stopping')
         break
 
     del dataset
