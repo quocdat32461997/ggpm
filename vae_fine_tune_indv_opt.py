@@ -3,7 +3,9 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
 
-import math, random, sys
+import math
+import random
+import sys
 import numpy as np
 import argparse
 
@@ -38,9 +40,9 @@ model = to_cuda(model_class(args))
 # load saved encoder only
 if args.saved_model:
     if args.load_encoder_only is True:
-        model = copy_encoder(model, PropertyVAE(args), args.saved_model)
+        model = copy_encoder(model, HierPropertyVAE(args), args.saved_model)
         print('Successfully copied encoder weights.')
-    else: # default to load entire encoder-decoder model
+    else:  # default to load entire encoder-decoder model
         model = copy_model(model, PropertyVAE(args), args.saved_model, w_property=args.load_property_head)
         print('Successfully copied encoder-decoder weights.')
 
@@ -68,8 +70,10 @@ multi_optim = MultipleOptimizer(opts=[optim.Adam([param for name, param in model
                                 decay_lr=True, anneal_rate=args.anneal_rate)
 early_stopping = EarlyStopping(patience=5, verbose=True, delta=0.01, path=args.save_dir + '/model.{}'.format('best'))
 
-param_norm = lambda m: math.sqrt(sum([p.norm().item() ** 2 for p in m.parameters()]))
-grad_norm = lambda m: math.sqrt(sum([p.grad.norm().item() ** 2 for p in m.parameters() if p.grad is not None]))
+
+def param_norm(m): return math.sqrt(sum([p.norm().item() ** 2 for p in m.parameters()]))
+def grad_norm(m): return math.sqrt(sum([p.grad.norm().item() ** 2 for p in m.parameters() if p.grad is not None]))
+
 
 total_step = 0
 beta = args.beta
@@ -101,9 +105,9 @@ for epoch in range(args.load_epoch + 1, args.epoch):
             metrics[k] = v if not k in metrics else metrics[k] + v
 
         if total_step % args.print_iter == 0:
-            metrics = {k: v / args.print_iter for k,v in metrics.items()}
+            metrics = {k: v / args.print_iter for k, v in metrics.items()}
             print("[%d] Beta: %.3f, PNorm: %.2f, GNorm: %.2f" % (
-                total_step, beta,  param_norm(model), grad_norm(model))) # print step
+                total_step, beta,  param_norm(model), grad_norm(model)))  # print step
 
             # print metrics
             print(', '.join([k + ': %.3f' % v for k, v in metrics.items()]))
