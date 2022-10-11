@@ -135,4 +135,5 @@ dmypy.json
 **/data/qm9/files
 **/ckpt
 **/*.zip
-**/*ipynb
+**/*.ipynb
+**/*.csv
