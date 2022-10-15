@@ -14,7 +14,7 @@ class PropertyVAEOptimizer(nn.Module):
     def __init__(self, model, args):
         super(PropertyVAEOptimizer, self).__init__()
 
-        self.model: PropOptVAE = model
+        self.model = model
         self.property_optim_step = args.property_optim_step
         self.patience = args.patience
         self.optimize_type = args.optimize_type
@@ -119,7 +119,6 @@ class PropertyVAEOptimizer(nn.Module):
         h_vecs, l_vecs = [], []
         idx = 0
         for h_vec, l_vec, h_tar, l_tar in zip(homo_vecs, lumo_vecs, homo_targets, lumo_targets):
-            print(idx)
             idx += 1
             # loop until patience hits 0 or total_loss less than delta to avoid infinite loop
             prev_loss, patience = 0, self.patience
@@ -179,3 +178,40 @@ class PropertyVAEOptimizer(nn.Module):
             lumo_vecs = self.update_params(lumo_vecs, lumo_outputs, lumo_targets)
 
         return torch.cat([homo_vecs, lumo_vecs], dim=-1)
+
+class HierPropertyVAEOptimizer(PropertyVAEOptimizer):
+    def __init__(self, model, args):
+        super(HierPropertyVAEOptimizer, self).__init__(model, args)
+
+    def forward(self, batch, args):
+        # Input:
+        #   - root_vecs: torch.Tensor of root_vecs
+        #   - targets: tuples of HOMO and LUMO targets
+
+        mols, _, tensors, _, homos, lumos = batch
+        tree_tensors, graph_tensors = tensors = make_cuda(tensors)
+        homos = make_tensor(homos)
+        lumos = make_tensor(lumos)
+
+        # encode
+        root_vecs, _, _, _ = self.model.encoder(tree_tensors, graph_tensors)
+
+        # add gaussian noise
+        root_vecs, _ = self.model.rsample(root_vecs, perturb=False)
+
+        # optimize HOMOs & LUMOs
+        func = self._get_optimize_func()
+        with torch.enable_grad():
+            root_vecs = func(homo_vecs=root_vecs[:, :self.model.latent_size],
+                             lumo_vecs=root_vecs[:, self.model.latent_size:],
+                             homo_targets=homos, lumo_targets=lumos)
+
+        # predict properties
+        property_outputs = self.model.property_optim.predict(homo_vecs=root_vecs[:, :self.model.latent_size],
+                                                             lumo_vecs=root_vecs[:, self.model.latent_size:])
+
+        # decode
+        reconstructions = self.model.decoder.decode(mols, tuple([root_vecs] * 3),
+                                                    greedy=True, max_decode_step=150)
+        return property_outputs, reconstructions
+    

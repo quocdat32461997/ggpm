@@ -184,14 +184,14 @@ class HierPropOptVAE(torch.nn.Module):
         return z_vecs, kl_loss
 
     def reconstruct(self, batch, args):
-        mols, graphs, tensors, _, homos, lumos = batch
-        tree_tensors, _ = make_cuda(tensors)
+        mols, _, tensors, _, _, _ = batch
+        tree_tensors, graph_tensors = tensors = make_cuda(tensors)
 
         # encode
-        root_vecs, tree_vecs = self.encoder(tree_tensors)
+        root_vecs, _, _, _ = self.encoder(tree_tensors, graph_tensors)
 
         # add gaussian noise
-        root_vecs, root_kl = self.rsample(root_vecs, perturb=False)
+        root_vecs, _ = self.rsample(root_vecs, perturb=False)
 
         # torch.cat([root_vecs, root_vecs.clone()], dim=-1)# find new latent vector that optimize HOMO & LUMO properties
         latent_vecs = root_vecs.clone()

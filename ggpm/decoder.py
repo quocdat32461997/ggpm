@@ -271,7 +271,7 @@ class HierMPNDecoder(nn.Module):
         icls_acc = get_accuracy(icls_scores, to_cuda(icls_labs))
 
         # compute loss and acc: assm
-        if len(all_assm_preds) > 0:
+        if slen(all_assm_preds) > 0:
             assm_vecs, batch_idx, assm_labels = zip_tensors(all_assm_preds)
             assm_scores = self.get_assm_score(src_graph_vecs, to_cuda(batch_idx), assm_vecs)
             assm_loss = self.assm_loss(assm_scores, to_cuda(assm_labels))
@@ -306,7 +306,7 @@ class HierMPNDecoder(nn.Module):
         results = [[] for _ in range(batch_size)]
 
         tree_batch = IncTree(batch_size, node_fdim=2, edge_fdim=3)
-        graph_batch = IncGraph(self.avocab, batch_size, node_fdim=self.hmpn.atom_size,
+        graph_batch = IncGraph(self.vocab, self.avocab, batch_size, node_fdim=self.hmpn.atom_size,
                                edge_fdim=self.hmpn.atom_size + self.hmpn.bond_size)
         stack = [[] for i in range(batch_size)]
 
@@ -469,7 +469,7 @@ class HierMPNDecoder(nn.Module):
             for mol, r in zip(graph_batch.get_mol(), results):
                 inter_label = r[-1]['Attaching Fragment'][1] if 'Attaching Fragment' in r[-1] else []
                 r[-1]['partial-graph'] = mol
-        return graph_batch.get_mol()
+        return results, graph_batch.get_mol()
 
 
 class MotifDecoder(torch.nn.Module):
