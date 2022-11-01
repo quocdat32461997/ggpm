@@ -271,7 +271,7 @@ class HierMPNDecoder(nn.Module):
         icls_acc = get_accuracy(icls_scores, to_cuda(icls_labs))
 
         # compute loss and acc: assm
-        if slen(all_assm_preds) > 0:
+        if len(all_assm_preds) > 0:
             assm_vecs, batch_idx, assm_labels = zip_tensors(all_assm_preds)
             assm_scores = self.get_assm_score(src_graph_vecs, to_cuda(batch_idx), assm_vecs)
             assm_loss = self.assm_loss(assm_scores, to_cuda(assm_labels))

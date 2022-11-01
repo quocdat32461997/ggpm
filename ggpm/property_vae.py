@@ -246,6 +246,7 @@ class HierPropOptVAE(torch.nn.Module):
         # decode
         loss, wacc, iacc, tacc, sacc = self.decoder(mols, (root_vecs, root_vecs, root_vecs), graphs, tensors, orders)
 
+        """
         # sum-up loss
         loss += beta * kl_div
 
@@ -254,7 +255,13 @@ class HierPropOptVAE(torch.nn.Module):
         if self.loss_scaling:
             loss = self.loss_weigh.compute_recon_loss(loss)
             homo_loss, lumo_loss = self.loss_weigh.compute_prop_loss(homo_loss, lumo_loss)
-
+        """
+        # since loss-scaling may lead to negative loss
+        # hence, separate each loss term and clip individually
+        if self.loss_scaling:
+            loss = self.loss_weigh.compute_recon_loss(loss)
+            homo_loss, lumo_loss = self.loss_weigh.compute_prop_loss(homo_loss, lumo_loss)
+            
         total_loss = loss + homo_loss + lumo_loss
         loss_clipped, total_loss = self.clip_negative_loss(total_loss)
 
