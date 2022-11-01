@@ -137,3 +137,8 @@ dmypy.json
 **/*.zip
 **/*.ipynb
 **/*.csv
+**/*.xlsx
+**/output*.txt
+**/output*.png
+**/*.pdf
+**/*.pptx
