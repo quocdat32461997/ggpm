@@ -7,7 +7,7 @@ import pickle
 
 import rdkit
 from ggpm import *
-from ggpm.property_vae import PropertyVAE, PropOptVAE
+from ggpm.property_vae import *
 from configs import *
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
@@ -56,7 +56,7 @@ MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 configs.vocab = PairVocab([(x,y) for x,y,_ in vocab])
 
 # init and load core model
-model = to_cuda(PropOptVAE(configs))
+model = to_cuda(HierPropOptVAE(configs))
 # Loading state_dict
 try:
     model.load_state_dict(torch.load(configs.output_model,
@@ -69,7 +69,7 @@ except:
         del state_dict
 
 # init property-control model
-control_model = PropertyVAEOptimizer(model=model, args=configs)
+control_model = HierPropertyVAEOptimizer(model=model, args=configs)
 control_model.eval()
 
 dataset = MoleculeDataset(configs.test_data, configs.vocab, configs.atom_vocab, configs.batch_size)

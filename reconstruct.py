@@ -8,7 +8,7 @@ import pickle
 
 import rdkit
 from ggpm import *
-from ggpm.property_vae import PropertyVAE, PropOptVAE
+from ggpm.property_vae import PropertyVAE, PropOptVAE, HierPropertyVAE, HierPropOptVAE
 from configs import *
 
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
@@ -44,7 +44,7 @@ vocab = [x.strip("\r\n ").split() for x in open(args.vocab_)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
 args.vocab = PairVocab([(x, y) for x, y, _ in vocab])
 
-model = to_cuda(PropOptVAE(args))
+model = to_cuda(HierPropOptVAE(args))
 # Loading state_dict
 try:
     model.load_state_dict(torch.load(args.output_model,

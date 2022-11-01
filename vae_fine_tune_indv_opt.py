@@ -43,7 +43,7 @@ if args.saved_model:
         model = copy_encoder(model, HierPropertyVAE(args), args.saved_model)
         print('Successfully copied encoder weights.')
     else:  # default to load entire encoder-decoder model
-        model = copy_model(model, PropertyVAE(args), args.saved_model, w_property=args.load_property_head)
+        model = copy_model(model, HierPropertyVAE(args), args.saved_model, w_property=args.load_property_head)
         print('Successfully copied encoder-decoder weights.')
 
 else:
@@ -60,13 +60,13 @@ print("Model #Params: %dK" % (sum([x.nelement() for x in model.parameters()]) / 
 
 multi_optim = MultipleOptimizer(opts=[optim.Adam([param for name, param in model.named_parameters()
                                                   if ('decoder' not in name and 'homo_linear' not in name and 'lumo_linear' not in name)],
-                                                 lr=args.lr),
+                                                 lr=args.encoder_slr),
                                       optim.Adam([param for name, param in model.named_parameters() if 'decoder' in name],
-                                                 lr=args.lr),
+                                                 lr=args.decoder_lr),
                                       optim.Adam([param for name, param in model.named_parameters() if 'homo_linear' in name],
-                                                 lr=args.lr),
+                                                 lr=args.homo_lr),
                                       optim.Adam([param for name, param in model.named_parameters() if 'lumo_linear' in name],
-                                                 lr=args.lr)],
+                                                 lr=args.lumo_lr)],
                                 decay_lr=True, anneal_rate=args.anneal_rate)
 early_stopping = EarlyStopping(patience=5, verbose=True, delta=0.01, path=args.save_dir + '/model.{}'.format('best'))
 
