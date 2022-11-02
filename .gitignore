@@ -143,3 +143,5 @@ dmypy.json
 **/*.pdf
 **/*.pptx
 **/*.xls
+**/*.py.swp
+**/*.dat
