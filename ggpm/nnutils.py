@@ -195,3 +195,18 @@ def rename_optimizer_state_keys(model_state_dict):
             name = k
         new_state_dict[name] = v
     return new_state_dict
+
+def make_tensor(x):
+    if not isinstance(x, torch.Tensor):
+        if isinstance(x, np.ndarray):
+            x = x.tolist()
+        x = torch.tensor(x)
+
+    return to_cuda(x)
+
+
+def make_cuda(tensors):
+    tree_tensors, graph_tensors = tensors
+    tree_tensors = [make_tensor(x).long() for x in tree_tensors[:-1]] + [tree_tensors[-1]]
+    graph_tensors = [make_tensor(x).long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
+    return tree_tensors, graph_tensors

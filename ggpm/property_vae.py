@@ -8,22 +8,6 @@ from ggpm.loss_weigh import *
 from ggpm.nnutils import *
 
 
-def make_tensor(x):
-    if not isinstance(x, torch.Tensor):
-        if isinstance(x, np.ndarray):
-            x = x.tolist()
-        x = torch.tensor(x)
-
-    return to_cuda(x)
-
-
-def make_cuda(tensors):
-    tree_tensors, graph_tensors = tensors
-    tree_tensors = [make_tensor(x).long() for x in tree_tensors[:-1]] + [tree_tensors[-1]]
-    graph_tensors = [make_tensor(x).long() for x in graph_tensors[:-1]] + [graph_tensors[-1]]
-    return tree_tensors, graph_tensors
-
-
 class HierPropertyVAE(nn.Module):
     def __init__(self, args):
         super(HierPropertyVAE, self).__init__()
