@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import rdkit.Chem as Chem
-import torch.nn.functional as F
 from ggpm.nnutils import *
 from ggpm.mol_graph import MolGraph
 from ggpm.rnn import GRU, LSTM

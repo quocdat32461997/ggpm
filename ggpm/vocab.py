@@ -1,6 +1,4 @@
-import rdkit
 import rdkit.Chem as Chem
-import copy
 import torch
 
 from ggpm.nnutils import to_cuda

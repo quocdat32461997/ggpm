@@ -1,7 +1,7 @@
 import torch
 
 from torch import nn
-from ggpm.property_vae import PropOptVAE, make_cuda, make_tensor
+from ggpm.property_vae import make_cuda, make_tensor
 
 
 def switch_gradients(loss, outputs, targets):

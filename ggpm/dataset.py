@@ -1,10 +1,7 @@
-import torch
 from torch.utils.data import Dataset
 from rdkit import Chem
 import os, random, gc
 import pickle
-import numpy as np
-from icecream import ic
 
 from ggpm.chemutils import get_leaves
 from ggpm.mol_graph import MolGraph
