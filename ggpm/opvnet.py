@@ -3,9 +3,9 @@ from ggpm.property_vae import *
 class OPVNet:
     MODEL_DICT = {
             'prop': PropertyVAE,
-            'prop_opt': PropOptVAE,
-            'hier_prop': HierPropertyVAE,
-            'hier_prop_opt': HierPropOptVAE
+            'prop-opt': PropOptVAE,
+            'hier-prop': HierPropertyVAE,
+            'hier-prop-opt': HierPropOptVAE
             }
 
     @staticmethod

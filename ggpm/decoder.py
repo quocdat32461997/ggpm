@@ -523,6 +523,7 @@ class MotifDecoder(torch.nn.Module):
             self.A_cls = nn.Linear(hidden_size, latent_size)
             self.A_assm = nn.Linear(hidden_size, latent_size)
 
+        self.topo_loss = nn.BCEWithLogitsLoss(size_average=False)
         self.cls_loss = nn.CrossEntropyLoss(reduction='sum')
         self.icls_loss = nn.CrossEntropyLoss(reduction='sum')
         self.assm_loss = nn.CrossEntropyLoss(reduction='sum')

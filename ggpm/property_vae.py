@@ -59,8 +59,7 @@ class HierPropertyVAE(nn.Module):
 
         loss += beta * kl_div
         return loss, {'Loss': loss.item(), 'KL:': kl_div.item(),
-                      'Word': wacc.item(), 'I-Word': iacc.item(), 'Topo': tacc.item(), 'Assm': sacc.item()}, False
-
+                      'Word': wacc.item(), 'I-Word': iacc.item(), 'Topo': tacc.item(), 'Assm': sacc.item()}
 
 class PropertyVAE(torch.nn.Module):
     def __init__(self, args):
@@ -125,7 +124,7 @@ class PropertyVAE(torch.nn.Module):
 
         loss += beta * kl_div
         return loss, {'Loss': loss.item(), 'KL:': kl_div.item(),
-                      'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}, False
+                      'Word': wacc, 'I-Word': iacc, 'Topo': tacc, 'Assm': sacc}
 
 
 class HierPropOptVAE(torch.nn.Module):
