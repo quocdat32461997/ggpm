@@ -1,6 +1,12 @@
 # ggpm
 GGPM - GraphNN Generation of Photovoltaic Molecules
 
+## Setup environments
+For easy, run
+```
+conda env create _ENV_NAME_ --form chem_env.yml
+```
+
 ## Training Steps
 ### Step 1: Extracting motif vocabs from training sets only
 ```
