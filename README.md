@@ -4,7 +4,7 @@ GGPM - GraphNN Generation of Photovoltaic Molecules
 ## Setup environments
 For easy, run
 ```
-conda env create _ENV_NAME_ --form chem_env.yml
+conda env create _ENV_NAME_ -f chem_env.yml
 ```
 
 ## Training Steps
