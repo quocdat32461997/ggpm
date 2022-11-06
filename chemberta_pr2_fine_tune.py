@@ -38,7 +38,7 @@ class ChemBertaForPR2(torch.nn.Module):
                 torch.nn.Dropout(dropout),
             ])
             embed_size = hidden_size
-        self.regressors.append(torch.nn.Linear(hidden_size_list[-1], 1))
+        self.regressors.append(torch.nn.Linear(hidden_size_list[-1], 2))
 
         # loss
         self.mse_loss = torch.nn.MSELoss()
