@@ -1,9 +1,6 @@
 import os
 import json
 
-from ggpm.vocab import common_atom_vocab
-
-
 class Configs(object):
     """Class to perform configs-parsing"""
     def __init__(self, path=None, args=None):
@@ -29,7 +26,8 @@ class Configs(object):
         self.args = {k: v for k,v in self.__dict__.items()} # save args
 
         # set atom_vocab
-        if self.atom_vocab_ is None:
+        if 'atom_vocab_' in configs and self.atom_vocab_ is None:
+            from ggpm.vocab import common_atom_vocab
             self.atom_vocab = common_atom_vocab
 
         # create saved_dir

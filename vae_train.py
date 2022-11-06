@@ -4,14 +4,11 @@ import torch.optim as torch_optim
 import torch.optim.lr_scheduler as lr_scheduler
 
 import math
-import random
 import sys
-import numpy as np
 import argparse
 
 from ggpm import *
 from configs import *
-from torchtools import EarlyStopping
 import rdkit
 
 from ggpm.property_vae import *
@@ -62,10 +59,6 @@ print("Model #Params: %dK" % (sum([x.nelement() for x in model.parameters()]) / 
 
 optimizer = torch_optim.Adam(model.parameters(), lr=configs.lr)
 scheduler = lr_scheduler.ExponentialLR(optimizer, configs.anneal_rate)
-if configs.early_stopping:
-    early_stopping = EarlyStopping(patience=5, verbose=True, delta=0.01,
-                                   path=configs.save_dir + '/model.{}'.format('best'))
-
 
 def param_norm(m): return math.sqrt(sum([p.norm().item() ** 2 for p in m.parameters()]))
 def grad_norm(m): return math.sqrt(sum([p.grad.norm().item() ** 2 for p in m.parameters() if p.grad is not None]))

@@ -4,8 +4,6 @@ from torch.nn import functional as F
 from rdkit import Chem
 from rdkit.Chem.rdchem import BondType as BT
 from rdkit.Chem.rdchem import HybridizationType
-from torch_geometric.data.data import Data
-from torch_scatter import scatter
 import os
 import random
 import gc
@@ -119,6 +117,7 @@ class DataFolder(object):
             del batches
             gc.collect()
 
+
 class QM9Dataset(Dataset):
     atoms = {'H': 0, 'C': 1, 'N': 2, 'O': 3, 'F': 4}
     bonds = {BT.SINGLE: 0, BT.DOUBLE: 1, BT.TRIPLE: 2, BT.AROMATIC: 3}
@@ -130,6 +129,9 @@ class QM9Dataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
+        from torch_geometric.data.data import Data
+        from torch_scatter import scatter
+
         # Read mol
         smiles = self.data[index]
         mol = get_mol(smiles)
@@ -185,5 +187,5 @@ class QM9Dataset(Dataset):
         x = torch.cat([x1.to(torch.float), x2], dim=-1)
 
         name = mol.GetProp('_Name')
-        return Data(x=x, z=z, pos=pos, edge_index=edge_index, \
-            edge_attr=edge_attr, name=name)
+        return Data(x=x, z=z, pos=pos, edge_index=edge_index,
+                    edge_attr=edge_attr, name=name)

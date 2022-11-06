@@ -40,5 +40,5 @@
     "device": "cuda:0",
     "early_stopping": false,
     "loss_scaling": false,
-        "tie_embedding": true
+        "tie_embedding": false
 }
