@@ -2,8 +2,8 @@
     "data": "data/trio_chem_supervised_train_data.csv",
     "val_data": "data/trio_chem_supervised_val_data.csv",
     "test_data": "data/chem_data/cleaned_data.csv",
-    "output": "motif_chem_trio_fine_tuned_600_hidden_w_tie_embedding_early_stoppingprediction.csv",
-    "save_dir": "./ckpt/motif_chem_trio_fine_tuned_600_hidden_w_tie_embedding_early_stopping",
+    "output": null,
+    "save_dir": "./ckpt/chemberta_property_prediction_fine_tune",
     "hidden_size_list": [256, 64],
     "lr": 1e-3,
     "epoch": 20,
@@ -11,9 +11,10 @@
     "anneal_rate": 0.9,
     "print_iter": 50,
     "eval_iter": 750,
-    "save_iter": 2,
+    "save_iter": -1,
     "seed": 1,
     "patience": 5,
     "patience_delta": 0.01,
-    "dropout": 0.1
+    "dropout": 0.1,
+    "early_stopping": true
 }

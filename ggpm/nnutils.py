@@ -10,10 +10,11 @@ is_cuda = torch.cuda.is_available()
 device = torch.device('cuda:0') if is_cuda else torch.device('cpu')
 
 
-def copy_model(tbc_model, tc_model, w_property=False):
+def copy_model(tbc_model, tc_model, saved_model, w_property=False):
     # Function to copy encoder-decoder model w/ property-optimizer
 
     # load tc_model: encoder & decoder
+    tc_model.load_state_dict(torch.load(saved_model, map_location=device))
     # and load tbc_model
     #tc_model.load_state_dict(torch.load(path, map_location=device))
     tc_model_dict = {'encoder': tc_model.encoder.state_dict(),

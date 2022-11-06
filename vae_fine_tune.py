@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
+import torch.optim as torch_optim
 import torch.optim.lr_scheduler as lr_scheduler
 
 import math, sys
@@ -41,11 +41,13 @@ model = to_cuda(model_finetune_class(configs))
 
 # load saved encoder only
 if configs.saved_model:
+    # load tc_model
     if configs.load_encoder_only is True:
         model = copy_encoder(model, model_pretrained_class(configs), configs.saved_model)
         print('Successfully copied encoder weights.')
     else: # default to load entire encoder-decoder model
-        model = copy_model(model, model_pretrained_class(configs), configs.saved_model, w_property=configs.load_property_head)
+        model = copy_model(model, model_pretrained_class(configs), configs.saved_model, \
+            w_property=configs.load_property_head)
         print('Successfully copied encoder-decoder weights.')
 
 else:
@@ -60,7 +62,7 @@ if configs.load_epoch >= 0:
 
 print("Model #Params: %dK" % (sum([x.nelement() for x in model.parameters()]) / 1000,))
 
-optimizer = optim.Adam(model.parameters(), lr=configs.lr)
+optimizer = torch_optim.Adam(model.parameters(), lr=configs.lr)
 scheduler = lr_scheduler.ExponentialLR(optimizer, configs.anneal_rate)
 if configs.early_stopping:
     early_stopping = EarlyStopping(patience=5, verbose=True, delta=0.01, path=configs.save_dir + '/model.{}'.format('best'))

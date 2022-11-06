@@ -1,7 +1,5 @@
-from os import stat
 import torch
 from torch.utils.data import DataLoader
-import moses
 import pandas as pd
 import argparse
 import pickle
@@ -24,7 +22,6 @@ parser.add_argument('--model-type', required=True)
 # parse args
 args = parser.parse_args()
 path_to_config = args.path_to_config
-model_type = args.model_type
 
 # parse args
 args = parser.parse_args()

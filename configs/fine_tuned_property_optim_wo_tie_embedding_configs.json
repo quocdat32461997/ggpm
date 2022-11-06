@@ -1,8 +1,9 @@
 {
     "pretrained": false,
     "data": "trio_chem_supervised_train_data",
+    "val_data": "trio_chem_supervised_val_data",
     "test_data": "data/chem_data/cleaned_data.csv",
-    "saved_model": "./ckpt/motif_chem_fine_tuned_wo_tie_embedding/model.19",
+    "saved_model": "./ckpt/motif_chem_trio_pretrained_wo_tie_embedding/model.19",
     "output": "motif_chem_trio_fine_tuned_wo_tie_embedding_prediction.csv",
     "vocab_": "trio_polymer_vocab.txt",
     "atom_vocab_": null,

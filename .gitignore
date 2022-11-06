@@ -145,3 +145,6 @@ dmypy.json
 **/*.xls
 **/*.py.swp
 **/*.dat
+**/dimenet
+**/bert-loves-chemistry
+**/chemberta
