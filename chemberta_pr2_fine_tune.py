@@ -30,22 +30,15 @@ class ChemBertaForPR2(torch.nn.Module):
         self.backbone = RobertaModel.from_pretrained(MODEL_VERSION)
         embed_size = self.backbone.config.hidden_size
 
-        self.homo_regressors = torch.nn.ModuleList()
-        self.lumo_regressors = torch.nn.ModuleList()
+        self.regressors = torch.nn.ModuleList()
         for hidden_size in hidden_size_list:
-            self.homo_regressors.extend([
-                torch.nn.Linear(embed_size, hidden_size),
-                torch.nn.ReLU(),
-                torch.nn.Dropout(dropout),
-            ])
-            self.lumo_regressors.extend([
+            self.regressors.extend([
                 torch.nn.Linear(embed_size, hidden_size),
                 torch.nn.ReLU(),
                 torch.nn.Dropout(dropout),
             ])
             embed_size = hidden_size
-        self.homo_regressors.append(torch.nn.Linear(hidden_size_list[-1], 1))
-        self.lumo_regressors.append(torch.nn.Linear(hidden_size_list[-1], 1))
+        self.regressors.append(torch.nn.Linear(hidden_size_list[-1], 1))
 
         # loss
         self.mse_loss = torch.nn.MSELoss()
@@ -56,16 +49,13 @@ class ChemBertaForPR2(torch.nn.Module):
         outputs = self.backbone(inputs).pooler_output
 
         # regression
-        homo_outputs = self.homo_regressors[0](outputs)
-        lumo_outputs = self.lumo_regressors[0](outputs)
-        for homo_layer, lumo_layer in zip(self.homo_regressors[1:], self.lumo_regressors[1:]):
-            homo_outputs = homo_layer(homo_outputs)
-            lumo_outputs = lumo_layer(lumo_outputs)
+        for layer in self.regressors:
+            outputs = layer(outputs)
 
 
         # flatten outputs
-        homo_outputs = homo_outputs.view(-1)
-        lumo_outputs = lumo_outputs.view(-1)
+        homo_outputs = outputs[:, 0]
+        lumo_outputs = outputs[:, 1]
 
         # homo
         homo_mae_loss = self.mae_loss(homo_outputs, homo_labels)
@@ -188,11 +178,16 @@ def fine_tune(args):
                 sys.stdout.flush()
 
                 del val_dataloader
-                # update early_stopping
-                if configs.early_stopping:
-                    early_stopping(val_metrics['loss'], model)
-                    if early_stopping.early_stop:
-                        break
+
+            # update early_stopping
+            if configs.early_stopping:
+                early_stopping(val_metrics['loss'], model)
+                if early_stopping.early_stop:
+                    break
+        if configs.early_stopping and early_stopping.early_stop:
+            print('Stop: early stopping')
+            break
+
         del train_dataloader
         if configs.save_iter == -1:
             torch.save(model.state_dict(), configs.save_dir + "/model." + str(epoch))
