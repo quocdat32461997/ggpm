@@ -179,11 +179,11 @@ def fine_tune(args):
 
                 del val_dataloader
 
-            # update early_stopping
-            if configs.early_stopping:
-                early_stopping(val_metrics['loss'], model)
-                if early_stopping.early_stop:
-                    break
+                # update early_stopping
+                if configs.early_stopping:
+                    early_stopping(val_metrics['loss'], model)
+                    if early_stopping.early_stop:
+                        break
         if configs.early_stopping and early_stopping.early_stop:
             print('Stop: early stopping')
             break
