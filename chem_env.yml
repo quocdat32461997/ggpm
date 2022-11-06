@@ -1,6 +1,7 @@
 name: chem
 channels:
   - rdkit
+  - huggingface
   - conda-forge
   - defaults
 dependencies:
@@ -20,10 +21,10 @@ dependencies:
   - brotlipy=0.7.0=py37h9ed2024_1003
   - bzip2=1.0.8=h1de35cc_0
   - c-ares=1.18.1=hca72f7f_0
-  - ca-certificates=2022.10.11=hecd8cb5_0
+  - ca-certificates=2022.9.24=h033912b_0
   - cachetools=4.2.2=pyhd3eb1b0_0
   - cairo=1.16.0=h691a603_2
-  - certifi=2022.9.24=py37hecd8cb5_0
+  - certifi=2022.9.24=pyhd8ed1ab_0
   - cffi=1.15.1=py37hc55c11b_0
   - charset-normalizer=2.0.4=pyhd3eb1b0_0
   - click=8.0.4=py37hecd8cb5_0
@@ -36,6 +37,7 @@ dependencies:
   - deepchem=2.6.1=pyhd8ed1ab_0
   - entrypoints=0.4=py37hecd8cb5_0
   - fftw=3.3.9=h9ed2024_1
+  - filelock=3.6.0=pyhd3eb1b0_0
   - fontconfig=2.13.1=hb62acd4_1
   - freetype=2.12.1=hd8bbffd_0
   - frozenlist=1.2.0=py37hca72f7f_0
@@ -51,9 +53,12 @@ dependencies:
   - grpcio=1.36.1=py37h97de6d8_1
   - h5py=2.10.0=py37h0601b69_1
   - hdf5=1.10.6=h10fe05b_1
+  - huggingface_hub=0.10.1=py_0
   - icu=58.2=h0a44026_3
   - idna=3.4=py37hecd8cb5_0
   - importlib-metadata=4.11.3=py37hecd8cb5_0
+  - importlib_metadata=4.11.3=hd3eb1b0_0
+  - importlib_resources=5.10.0=pyhd8ed1ab_0
   - intel-openmp=2021.4.0=hecd8cb5_3538
   - jedi=0.18.1=py37hecd8cb5_1
   - joblib=1.1.1=py37hecd8cb5_0
@@ -86,6 +91,7 @@ dependencies:
   - llvm-openmp=14.0.6=h0dcd299_0
   - lz4-c=1.9.3=h23ab428_1
   - markdown=3.3.4=py37hecd8cb5_0
+  - markupsafe=2.1.1=py37h69ee0a8_1
   - matplotlib-inline=0.1.6=py37hecd8cb5_0
   - mkl=2021.4.0=hecd8cb5_637
   - mkl-service=2.4.0=py37h9ed2024_0
@@ -99,7 +105,7 @@ dependencies:
   - numpy=1.21.5=py37h2e5f0a9_3
   - numpy-base=1.21.5=py37h3b1a694_3
   - oauthlib=3.2.1=py37hecd8cb5_0
-  - openssl=1.1.1s=hca72f7f_0
+  - openssl=1.1.1s=hfd90126_0
   - opt_einsum=3.3.0=pyhd3eb1b0_1
   - packaging=21.3=pyhd3eb1b0_0
   - pandas=1.3.5=py37h743cdd8_0
@@ -126,12 +132,15 @@ dependencies:
   - python_abi=3.7=2_cp37m
   - pytorch=1.10.2=cpu_py37h903acac_0
   - pytz=2022.1=py37hecd8cb5_0
+  - pyyaml=6.0=py37hca72f7f_1
   - rdkit=2020.09.1.0=py37h81f2deb_1
   - re2=2021.04.01=he49afe7_0
   - readline=8.2=hca72f7f_0
+  - regex=2022.7.9=py37hca72f7f_0
   - requests=2.28.1=py37hecd8cb5_0
   - requests-oauthlib=1.3.0=py_0
   - rsa=4.7.2=pyhd3eb1b0_1
+  - sacremoses=master=py_0
   - scikit-learn=1.0.2=py37hae1ba45_1
   - scipy=1.7.3=py37h214d14d_2
   - setuptools=65.5.0=py37hecd8cb5_0
@@ -146,7 +155,10 @@ dependencies:
   - termcolor=1.1.0=py37hecd8cb5_1
   - threadpoolctl=2.2.0=pyh0d69192_0
   - tk=8.6.12=h5d9f67b_0
+  - tokenizers=0.13.0.dev0=py37_0
   - tornado=6.2=py37hca72f7f_0
+  - tqdm=4.64.1=py37hecd8cb5_0
+  - transformers=4.24.0=py_0
   - typing-extensions=4.3.0=py37hecd8cb5_0
   - typing_extensions=4.3.0=py37hecd8cb5_0
   - urllib3=1.26.12=py37hecd8cb5_0
@@ -155,6 +167,7 @@ dependencies:
   - wheel=0.37.1=pyhd3eb1b0_0
   - wrapt=1.14.1=py37hca72f7f_0
   - xz=5.2.6=hca72f7f_0
+  - yaml=0.2.5=haf1e3a3_0
   - yarl=1.8.1=py37hca72f7f_0
   - zeromq=4.3.4=h23ab428_0
   - zipp=3.8.0=py37hecd8cb5_0
@@ -214,7 +227,6 @@ dependencies:
     - torch-geometric==2.1.0.post1
     - torch-scatter==2.0.9
     - torch-sparse==0.6.15
-    - tqdm==4.64.1
     - traitlets==5.5.0
     - webencodings==0.5.1
     - websocket-client==1.4.1
