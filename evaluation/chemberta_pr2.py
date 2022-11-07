@@ -84,7 +84,7 @@ class ChemBertaForTwoSplitPR2(torch.nn.Module):
         lumo_outputs = self.lumo_regressors[0](outputs)
         for homo_layer, lumo_layer in zip(self.homo_regressors[1:], self.lumo_regressors[1:]):
             homo_outputs = self.homo_layer(homo_outputs)
-            lumo_outputs = self.lumo_layer(lumno_outputs)
+            lumo_outputs = self.lumo_layer(lumo_outputs)
 
         # homo
         homo_outputs = homo_outputs.view(-1)
