@@ -3,7 +3,7 @@
     "val_data": "data/trio_chem_supervised_val_data.csv",
     "test_data": "data/chem_data/cleaned_data.csv",
     "output": null,
-    "save_dir": "./ckpt/chemberta_property_prediction_fine_tune",
+    "save_dir": "./ckpt/chemberta_property_prediction_fine_tune_v2",
     "hidden_size_list": [128, 64],
     "lr": 0.0005,
     "epoch": 20,
