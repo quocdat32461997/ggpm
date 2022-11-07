@@ -53,17 +53,13 @@ class ChemBertaForPR2(torch.nn.Module):
             outputs = layer(outputs)
 
 
-        # flatten outputs
-        homo_outputs = outputs[:, 0]
-        lumo_outputs = outputs[:, 1]
-
         # homo
-        homo_mae_loss = self.mae_loss(homo_outputs, homo_labels)
-        homo_mse_loss = self.mse_loss(homo_outputs, homo_labels)
+        homo_mae_loss = self.mae_loss(outputs[:, 0], homo_labels)
+        homo_mse_loss = self.mse_loss(outputs[:, 0], homo_labels)
 
         # lumo
-        lumo_mae_loss = self.mae_loss(lumo_outputs, lumo_labels)
-        lumo_mse_loss = self.mse_loss(lumo_outputs, lumo_labels)
+        lumo_mae_loss = self.mae_loss(outputs[:, 1], lumo_labels)
+        lumo_mse_loss = self.mse_loss(outputs[:, 1], lumo_labels)
 
         # total loss
         loss = homo_mae_loss + lumo_mae_loss
@@ -146,12 +142,14 @@ def fine_tune(args):
                 print("[%d] " % total_step, ', '.join([k + ': %.3f' % v for k, v in metrics.items()]))
                 sys.stdout.flush()
                 metrics = defaultdict(float)
+            
+            if total_step % configs.anneal_iter == 0:
+                scheduler.step()
+                print("learning rate: %.6f" % scheduler.get_lr()[0])
 
             if configs.save_iter >= 0 and total_step % configs.save_iter == 0:
                 n_iter = total_step // configs.save_iter - 1
                 torch.save(model.state_dict(), configs.save_dir + "/model." + str(n_iter))
-                scheduler.step()
-                print("learning rate: %.6f" % scheduler.get_lr()[0])
 
             # evaluate
             if total_step % configs.eval_iter == 0:

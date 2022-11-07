@@ -12,6 +12,7 @@
     "print_iter": 50,
     "eval_iter": 750,
     "save_iter": -1,
+    "anneal_iter": 1000,
     "seed": 1,
     "patience": 5,
     "patience_delta": 0.01,
