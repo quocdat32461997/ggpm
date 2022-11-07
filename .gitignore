@@ -127,3 +127,24 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+**/.DS_Store
+**/dev
+**/.idea
+**/*.pkl
+**/ckpt/model*
+**/data/qm9/files
+**/ckpt
+**/*.zip
+**/*.ipynb
+**/*.csv
+**/*.xlsx
+**/output*.txt
+**/output*.png
+**/*.pdf
+**/*.pptx
+**/*.xls
+**/*.py.swp
+**/*.dat
+**/dimenet
+**/bert-loves-chemistry
+**/chemberta
