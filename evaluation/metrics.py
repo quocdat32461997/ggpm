@@ -9,10 +9,11 @@ from ggpm import *
 class Metrics:
     MOL_WEIGHTS = [400, 3000]
 
-    def __init__(self, property_predictor, tokenizer, batch_size=512, ks=[50, 500], num_worker=2, device='cpu'):
-        self.property_predictor = property_predictor
-        self.property_predictor.eval()
-        self.tokenizer = tokenizer
+    def __init__(self, property_predictor=None, tokenizer=None, batch_size=512, ks=[50, 500], num_worker=2, device='cpu'):
+        if property_predictor and tokenizer:
+            self.property_predictor = property_predictor
+            self.property_predictor.eval()
+            self.tokenizer = tokenizer
         self.ks = ks
         self.num_worker = num_worker
         self.device = device
@@ -24,8 +25,8 @@ class Metrics:
                                      test=test_set, train=train_set)
 
     def mol_weight_indicator(self, output_set, test_set, train_set=None):
-        #mw_list = self.get_recon_n_sample_metrics(output_set, test_set, train_set)#['weight']
-    
+        # mw_list = self.get_recon_n_sample_metrics(output_set, test_set, train_set)#['weight']
+
         mw_list = [MolWt(MolFromSmiles(smiles)) for smiles in output_set[:30]]
         valids = [1 if Metrics.MOL_WEIGHTS[0] <= mw <= Metrics.MOL_WEIGHTS[1] else 0 for mw in mw_list]
 
@@ -33,7 +34,8 @@ class Metrics:
 
     def property_indicator(self, output_smiles):
         # get homos and lumos
-        output_smiles = self.tokenizer(output_smiles, return_tensors='pt', add_special_tokens=True, padding=True)['input_ids']
+        output_smiles = self.tokenizer(output_smiles, return_tensors='pt',
+                                       add_special_tokens=True, padding=True)['input_ids']
         homos, lumos = self.property_predictor.predict(output_smiles)
         print(homos, lumos)
         # homos and lumos in torch.tensor
@@ -53,8 +55,12 @@ class Metrics:
         return valids, valids.float().mean()
 
     def get_optimization_metrics(self, output_smiles, test_set, train_set):
+        prop_valids, property_i = None, None
+
         # get property-indiactor
-        prop_valids, property_i = self.property_indicator(output_smiles[:30])
+        if self.property_predictor:
+            prop_valids, property_i = self.property_indicator(output_smiles[:30])
+
         # get molecule-weight indicator
         mw_valids, mol_weight_i = self.mol_weight_indicator(
             output_set=output_smiles, test_set=test_set, train_set=train_set)
