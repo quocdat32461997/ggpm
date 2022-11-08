@@ -1,2 +1,2 @@
-from evaluation.chemberta_pr2 import *
+from evaluation.property_nets import *
 from evaluation.metrics import Metrics
