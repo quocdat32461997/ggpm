@@ -67,7 +67,7 @@ class QM9(InMemoryDataset):
                  pre_transform: Optional[Callable] = None,
                  pre_filter: Optional[Callable] = None):
         super().__init__(root, transform, pre_transform, pre_filter)
-        self.data_ = data
+        self.data, _ = torch.load(self.processed_paths[0])
 
     def mean(self, target: int) -> float:
         y = torch.cat([self.get(i).y for i in range(len(self))], dim=0)
@@ -83,14 +83,6 @@ class QM9(InMemoryDataset):
             out[torch.tensor([1, 6, 7, 8, 9])] = torch.tensor(atomrefs[target])
             return out.view(-1, 1)
         return None
-
-    @property
-    def raw_file_names(self) -> List[str]:
-        try:
-            import rdkit  # noqa
-            return ['gdb9.sdf', 'gdb9.sdf.csv', 'uncharacterized.txt']
-        except ImportError:
-            return ['qm9_v3.pt']
 
     @property
     def processed_file_names(self) -> str:
@@ -111,7 +103,7 @@ class QM9(InMemoryDataset):
             extract_zip(path, self.raw_dir)
             os.unlink(path)
 
-    def process(self):
+    def process(self, smiles_list):
         try:
             import rdkit
             from rdkit import Chem, RDLogger
@@ -141,11 +133,10 @@ class QM9(InMemoryDataset):
 
         types = {'H': 0, 'C': 1, 'N': 2, 'O': 3, 'F': 4}
         bonds = {BT.SINGLE: 0, BT.DOUBLE: 1, BT.TRIPLE: 2, BT.AROMATIC: 3}
-        
-        num_items = len(self.data_)
+
+        num_items = len(smiles_list)
         data_list = []
-        for i, smiles in enumerate(tqdm(self.data_)):
-            print(smiles)
+        for i, smiles in enumerate(tqdm(smiles_list)):
             try:
 
                 mol = Chem.MolFromSmiles(smiles)
