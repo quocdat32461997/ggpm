@@ -1,4 +1,4 @@
-from evaluation import Metrics, ChemBertaForPR2, MODEL_VERSION
+from evaluation import *
 from configs import *
 from ggpm import *
 import argparse
@@ -15,8 +15,8 @@ parser.add_argument('--output-data', required=True)
 parser.add_argument('--train-data', required=True)
 parser.add_argument('--path-to-config', required=True)
 parser.add_argument('--evaluate-mode', required=True)
-parser.add_argument('--batch-size', required=True, default=32, type=int)
-
+parser.add_argument('--batch-size', default=32, type=int)
+parser.add_argument('--model-type', required=True)
 
 def evaluate_recon(args):
     pass
@@ -39,7 +39,8 @@ def evaluate_optim(args):
 
     # load ChemBERTa for property prediction
     configs = Configs(args.path_to_config)
-    chemberta = ChemBertaForPR2(hidden_size_list=configs.hidden_size_list)
+    model_class = OPVNet.get_model(args.model_type)
+    chemberta = model_class(hidden_size_list=configs.hidden_size_list)
     chemberta.load_state_dict(torch.load(configs.save_dir + '/model.best', map_location=device))
     chemberta = to_cuda(chemberta)
     chemberta.eval()

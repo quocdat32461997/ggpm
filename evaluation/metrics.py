@@ -1,9 +1,41 @@
 import torch
-from rdkit.Chem import MolFromSmiles
+from rdkit.Chem import MolFromSmiles, AllChem
 from rdkit.Chem.Descriptors import MolWt
 import moses
+from torchmdnet.models.model import load_model
 
 from ggpm import *
+
+
+class PropertyPredictor:
+    MODEL_VERSION = "ANI1-equivariant_transformer/epoch=359-val_loss=0.0004-test_loss=0.0120.ckpt"
+
+    def __init__(self):
+        self.model = load_model(PropertyPredictor.MODEL_VERSION, derivative=True)
+        self.model.eval()
+
+    def __call__(self, mol_list):
+        positions = []
+        atomic_nums = []
+        batch_idxs = []
+        for batch_idx, mol in enumerate(mol_list):
+            mol = Chem.AddHs(mol)
+            AllChem.EmbedMolecule(mol)
+            AllChem.UFFOptimizeMolecule(mol)
+            mol.GetConformer()
+
+            for i, atom in enumerate(mol.GetAtoms()):
+                pos = mol.GetConformer().GetAtomPosition(i)
+                positions.append([pos.x, pos.y, pos.z])
+                atomic_nums.append(atom.GetAtomicNum())
+
+            batch_idxs.extend([batch_idx] * len(mol.Getatoms()))
+
+        atomic_nums = torch.tensor(atomic_nums, dtype=torch.long)
+        positions = torch.tensor(positions)
+        batch_idxs = torch.tensor(batch_idxs, dtype=torch.long)
+
+        return atomic_nums, positions, batch_idxs
 
 
 class Metrics:
@@ -36,23 +68,25 @@ class Metrics:
         # get homos and lumos
         output_smiles = self.tokenizer(output_smiles, return_tensors='pt',
                                        add_special_tokens=True, padding=True)['input_ids']
-        homos, lumos = self.property_predictor.predict(output_smiles)
-        print(homos, lumos)
+        with torch.no_grad():
+            #homos, lumos = self.property_predictor.predict(output_smiles)
+            homos = self.property_predictor.predict(output_smiles)
         # homos and lumos in torch.tensor
-        valids = torch.ones(len(homos))
+        #valids = torch.ones(len(homos))
 
         # both negative
-        valids *= (homos < 0) & (lumos < 0)
+        #valids *= (homos < 0) & (lumos < 0)
 
         # abs_lumos < abs_homos
-        valids *= lumos.abs() < homos.abs()
+        #valids *= lumos.abs() < homos.abs()
 
         # lumos - homos > 0.8
-        valids *= (lumos - homos) > 0.8
+        #valids *= (lumos - homos) > 0.8
 
         # cast to float and compute mean
-        valids = valids.float()
-        return valids, valids.float().mean()
+        #valids = valids.float()
+        # return valids, valids.float().mean()
+        return homos, None
 
     def get_optimization_metrics(self, output_smiles, test_set, train_set):
         prop_valids, property_i = None, None
@@ -65,5 +99,5 @@ class Metrics:
         mw_valids, mol_weight_i = self.mol_weight_indicator(
             output_set=output_smiles, test_set=test_set, train_set=train_set)
 
-        return {'prop_valids': prop_valids, 'property_': property_i,
+        return {'prop_valids': prop_valids, 'property_i': property_i,
                 'mw_valids': mw_valids, 'mol_weight_i': mol_weight_i}

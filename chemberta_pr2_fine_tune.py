@@ -3,23 +3,23 @@ import torch
 import argparse
 from torch.utils.data import DataLoader
 from transformers import RobertaTokenizer
-import torch.optim as optim
+import torch.optim as torch_optim
 import torch.optim.lr_scheduler as lr_scheduler
 from collections import defaultdict
 
 from torchtools import EarlyStopping
 from configs import *
-from ggpm.nnutils import to_cuda
+from ggpm import *
 from evaluation import *
 
 # define command line argus
 parser = argparse.ArgumentParser()
 parser.add_argument('--path-to-config', required=True)
-parser.add_argument('--homo-col', required=True)
-parser.add_argument('--lumo-col', required=True)
+parser.add_argument('--model-type', required=True)
+parser.add_argument('--property-type', default=None)
 args = parser.parse_args()
 
-PROPERTY_MAP = {'homo': 'HOMO', 'lumo': 'LUMO'}
+assert args.property_type in ['homos', 'lumos']
 
 
 def fine_tune(args):
@@ -28,22 +28,23 @@ def fine_tune(args):
 
     # get dataset
     train_dataset = PR2Dataset(configs.data, smiles_col='SMILES',
-                               homo_col=PROPERTY_MAP[args.homo_col], lumo_col=PROPERTY_MAP[args.lumo_col])
+                               homo_col='HOMO', lumo_col='LUMO')
     val_dataset = PR2Dataset(configs.val_data, smiles_col='SMILES',
-                             homo_col=PROPERTY_MAP[args.homo_col], lumo_col=PROPERTY_MAP[args.lumo_col])
+                             homo_col='HOMO', lumo_col='LUMO')
 
     # get tokenizer
     tokenizer = RobertaTokenizer.from_pretrained(MODEL_VERSION)
 
     # build model
-    model = ChemBertaForPR2(hidden_size_list=configs.hidden_size_list, dropout=configs.dropout)
+    model_class = OPVNet.get_model(args.model_type)
+    model = model_class(hidden_size_list=configs.hidden_size_list, dropout=configs.dropout)
     model = to_cuda(model)
 
     # saver configs
     configs.to_json(configs.save_dir + '/configs.json')
 
     # optimizer & scheduler
-    optimizer = optim.Adam(model.parameters(), lr=configs.lr)
+    optimizer = torch_optim.Adam(model.parameters(), lr=configs.lr)
     scheduler = lr_scheduler.ExponentialLR(optimizer, configs.anneal_rate)
 
     # earlystopping
@@ -53,7 +54,7 @@ def fine_tune(args):
     total_step = 0
     metrics = defaultdict(float)
     for epoch in range(configs.epoch):
-        train_dataloader = DataLoader(train_dataset, configs.batch_size)
+        train_dataloader = DataLoader(train_dataset, configs.batch_size, shuffle=True)
         for smiles, homo_labels, lumo_labels in train_dataloader:
             total_step += 1
             model.zero_grad()
@@ -62,7 +63,8 @@ def fine_tune(args):
             # encode data
             smiles_tokens = tokenizer(smiles, return_tensors='pt', add_special_tokens=True, padding=True)
             smiles_tokens = smiles_tokens['input_ids']
-            loss, metrics_ = model(to_cuda(smiles_tokens), to_cuda(homo_labels), to_cuda(lumo_labels))
+            loss, metrics_ = model(inputs=to_cuda(smiles_tokens), homos=to_cuda(homo_labels), 
+                                   lumos=to_cuda(lumo_labels), property_type=args.property_type)
 
             # backprop
             loss.backward()
@@ -96,7 +98,7 @@ def fine_tune(args):
                     for smiles, homo_labels, lumo_labels in val_dataloader:
                         smiles_tokens = tokenizer(smiles, return_tensors='pt', add_special_tokens=True, padding=True)
                         smiles_tokens = smiles_tokens['input_ids']
-                        loss, metrics_ = model(to_cuda(smiles_tokens), to_cuda(homo_labels), to_cuda(lumo_labels))
+                        loss, metrics_ = model(inputs=to_cuda(smiles_tokens), homos=to_cuda(homo_labels), lumos=to_cuda(lumo_labels), property_type=args.property_type)
 
                         # accumulate metrics
                         for k, v in metrics_.items():

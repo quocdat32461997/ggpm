@@ -5,8 +5,116 @@ from transformers import RobertaTokenizer, RobertaModel
 
 MODEL_VERSION = 'seyonec/PubChem10M_SMILES_BPE_450k'
 
+class ChemBertaForSinglePR2(torch.nn.Module):
+    def __init__(self, hidden_size_list, dropout=0.1):
+        super().__init__()
+        self.backbone = RobertaModel.from_pretrained(MODEL_VERSION)
+        embed_size = self.backbone.config.hidden_size
 
-class ChemBertaForPR2(torch.nn.Module):
+        self.regressors = torch.nn.ModuleList()
+        for hidden_size in hidden_size_list:
+            self.regressors.extend([
+                torch.nn.Linear(embed_size, hidden_size),
+                torch.nn.ReLU(),
+                torch.nn.Dropout(dropout),
+            ])
+            embed_size = hidden_size
+        self.regressors.append(torch.nn.Linear(hidden_size_list[-1], 1))
+
+        # loss
+        self.mse_loss = torch.nn.MSELoss()
+        self.mae_loss = torch.nn.L1Loss()
+
+    def forward(self, inputs, **kwargs):
+        # get labels
+        labels  = kwargs[kwargs['property_type']]
+
+        # molecule embeddings
+        outputs = self.backbone(inputs).last_hidden_state[:, 0, :]#.pooler_output
+
+        # regression
+        for layer in self.regressors:
+            outputs = layer(outputs)
+
+        # lumo
+        outputs = outputs.view(-1)
+        mae_loss = self.mae_loss(outputs, labels)
+        mse_loss = self.mse_loss(outputs, labels)
+
+        return mae_loss, {'mae': mae_loss.item(), 'mse': mse_loss.item()}
+
+    def predict(self, inputs):
+        # molecule embeddings
+        outputs = self.backbone(inputs).pooler_output
+
+        # regression
+        for layer in self.regressors:
+            outputs = layer(outputs)
+
+        return  outputs.view(-1)
+
+class ChemBertaForTwoSplitPR2(torch.nn.Module):
+    def __init__(self, hidden_size_list, dropout=0.1):
+        super().__init__()
+        self.backbone = RobertaModel.from_pretrained(MODEL_VERSION)
+        self.embed_size = embed_size = self.backbone.config.hidden_size // 2
+
+        self.homo_regressors = torch.nn.ModuleList()
+        self.lumo_regressors = torch.nn.ModuleList()
+        for hidden_size in hidden_size_list:
+            modules = [torch.nn.Linear(embed_size, hidden_size),
+                torch.nn.ReLU(),   
+                torch.nn.Dropout(dropout)]
+            self.homo_regressors.extend(modules)
+            self.lumo_regressors.extend(modules)
+            embed_size = hidden_size
+        self.homo_regressors.append(torch.nn.Linear(hidden_size_list[-1], 1))
+        self.lumo_regressors.append(torch.nn.Linear(hidden_size_list[-1], 1))
+
+        # loss
+        self.mse_loss = torch.nn.MSELoss()
+        self.mae_loss = torch.nn.L1Loss()
+
+    def forward(self, inputs, **kwargs):
+        # molecule embeddings
+        outputs = self.backbone(inputs).last_hidden_state[:, 0, :] #.pooler_output
+
+        # regression
+        homo_outputs = self.homo_regressors[0](outputs[:, :self.embed_size])
+        lumo_outputs = self.lumo_regressors[0](outputs[:, self.embed_size:])
+        for homo_layer, lumo_layer in zip(self.homo_regressors[1:], self.lumo_regressors[1:]):
+            homo_outputs = homo_layer(homo_outputs)
+            lumo_outputs = lumo_layer(lumo_outputs)
+
+        # homo
+        homo_outputs = homo_outputs.view(-1).float()
+        homo_mae_loss = self.mae_loss(homo_outputs, kwargs['homos'].float())
+        homo_mse_loss = self.mse_loss(homo_outputs, kwargs['homos'].float())
+
+        # lumo
+        lumo_outputs = lumo_outputs.view(-1).float()
+        lumo_mae_loss = self.mae_loss(lumo_outputs, kwargs['lumos'].float())
+        lumo_mse_loss = self.mse_loss(lumo_outputs, kwargs['lumos'].float())
+
+        # total loss
+        loss = torch.sqrt(homo_mse_loss + lumo_mse_loss)
+        return loss, {'homo_mae': homo_mae_loss.item(), 'homo_mse': homo_mse_loss.item(),
+                      'lumo_mae': lumo_mae_loss.item(), 'lumo_mse': lumo_mse_loss.item()}
+
+    def predict(self, inputs):
+        # molecule embeddings
+        outputs = self.backbone(inputs).last_hidden_state[:, 0, :]
+
+        # regression
+        homo_outputs = self.homo_regressors[0](outputs[:, :self.embed_size])
+        lumo_outputs = self.lumo_regressors[0](outputs[:, self.embed_size:])
+        for homo_layer, lumo_layer in zip(self.homo_regressors[1:], self.lumo_regressors[1:]):
+            homo_outputs = homo_layer(homo_outputs)
+            lumo_outputs = lumo_layer(lumo_outputs)
+
+        return homo_outputs, lumo_outputs
+
+class ChemBertaForTwoPR2(torch.nn.Module):
     def __init__(self, hidden_size_list, dropout=0.1):
         super().__init__()
         self.backbone = RobertaModel.from_pretrained(MODEL_VERSION)
@@ -26,7 +134,7 @@ class ChemBertaForPR2(torch.nn.Module):
         self.mse_loss = torch.nn.MSELoss()
         self.mae_loss = torch.nn.L1Loss()
 
-    def forward(self, inputs, homo_labels, lumo_labels):
+    def forward(self, inputs, **kwargs):
         # molecule embeddings
         outputs = self.backbone(inputs).pooler_output
 
@@ -35,12 +143,12 @@ class ChemBertaForPR2(torch.nn.Module):
             outputs = layer(outputs)
 
         # homo
-        homo_mae_loss = self.mae_loss(outputs[:, 0], homo_labels)
-        homo_mse_loss = self.mse_loss(outputs[:, 0], homo_labels)
+        homo_mae_loss = self.mae_loss(outputs[:, 0], kwargs['homos'])
+        homo_mse_loss = self.mse_loss(outputs[:, 0], kwargs['homos'])
 
         # lumo
-        lumo_mae_loss = self.mae_loss(outputs[:, 1], lumo_labels)
-        lumo_mse_loss = self.mse_loss(outputs[:, 1], lumo_labels)
+        lumo_mae_loss = self.mae_loss(outputs[:, 1], kwargs['lumos'])
+        lumo_mse_loss = self.mse_loss(outputs[:, 1], kwargs['lumos'])
 
         # total loss
         loss = homo_mae_loss + lumo_mae_loss
