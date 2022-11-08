@@ -54,7 +54,7 @@ def fine_tune(args):
     total_step = 0
     metrics = defaultdict(float)
     for epoch in range(configs.epoch):
-        train_dataloader = DataLoader(train_dataset, configs.batch_size)
+        train_dataloader = DataLoader(train_dataset, configs.batch_size, shuffle=True)
         for smiles, homo_labels, lumo_labels in train_dataloader:
             total_step += 1
             model.zero_grad()

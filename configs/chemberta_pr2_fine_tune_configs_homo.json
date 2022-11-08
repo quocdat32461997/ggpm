@@ -1,0 +1,20 @@
+{
+    "data": "data/trio_chem_supervised_train_data.csv",
+    "val_data": "data/trio_chem_supervised_val_data.csv",
+    "test_data": "data/chem_data/cleaned_data.csv",
+    "output": null,
+    "save_dir": "./ckpt/chemberta_property_prediction_fine_tune_homo_fixed",
+    "hidden_size_list": [256, 32],
+    "lr": 5e-4,
+    "epoch": 20,
+    "batch_size": 32,
+    "anneal_rate": 0.9,
+    "print_iter": 50,
+    "eval_iter": 750,
+    "save_iter": -1, "anneal_iter": 6000,
+    "seed": 1,
+    "patience": 5,
+    "patience_delta": 0.0,
+    "dropout": 0.1,
+    "early_stopping": true
+}

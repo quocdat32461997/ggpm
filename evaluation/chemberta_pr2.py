@@ -30,7 +30,7 @@ class ChemBertaForSinglePR2(torch.nn.Module):
         labels  = kwargs[kwargs['property_type']]
 
         # molecule embeddings
-        outputs = self.backbone(inputs).pooler_output
+        outputs = self.backbone(inputs).last_hidden_state[:, 0, :]#.pooler_output
 
         # regression
         for layer in self.regressors:
@@ -57,7 +57,7 @@ class ChemBertaForTwoSplitPR2(torch.nn.Module):
     def __init__(self, hidden_size_list, dropout=0.1):
         super().__init__()
         self.backbone = RobertaModel.from_pretrained(MODEL_VERSION)
-        embed_size = self.backbone.config.hidden_size
+        self.embed_size = embed_size = self.backbone.config.hidden_size // 2
 
         self.homo_regressors = torch.nn.ModuleList()
         self.lumo_regressors = torch.nn.ModuleList()
@@ -66,7 +66,7 @@ class ChemBertaForTwoSplitPR2(torch.nn.Module):
                 torch.nn.ReLU(),   
                 torch.nn.Dropout(dropout)]
             self.homo_regressors.extend(modules)
-            self.lumo_regressor.exend(modules)
+            self.lumo_regressors.extend(modules)
             embed_size = hidden_size
         self.homo_regressors.append(torch.nn.Linear(hidden_size_list[-1], 1))
         self.lumo_regressors.append(torch.nn.Linear(hidden_size_list[-1], 1))
@@ -77,39 +77,42 @@ class ChemBertaForTwoSplitPR2(torch.nn.Module):
 
     def forward(self, inputs, **kwargs):
         # molecule embeddings
-        outputs = self.backbone(inputs).pooler_output
+        outputs = self.backbone(inputs).last_hidden_state[:, 0, :] #.pooler_output
 
         # regression
-        homo_outputs = self.homo_regressors[0](outputs)
-        lumo_outputs = self.lumo_regressors[0](outputs)
+        homo_outputs = self.homo_regressors[0](outputs[:, :self.embed_size])
+        lumo_outputs = self.lumo_regressors[0](outputs[:, self.embed_size:])
         for homo_layer, lumo_layer in zip(self.homo_regressors[1:], self.lumo_regressors[1:]):
-            homo_outputs = self.homo_layer(homo_outputs)
-            lumo_outputs = self.lumo_layer(lumo_outputs)
+            homo_outputs = homo_layer(homo_outputs)
+            lumo_outputs = lumo_layer(lumo_outputs)
 
         # homo
-        homo_outputs = homo_outputs.view(-1)
-        homo_mae_loss = self.mae_loss(homo_outputs, kwargs['homo_labels'])
-        homo_mse_loss = self.mse_loss(homo_outputs, kwargs['homo_labels'])
+        homo_outputs = homo_outputs.view(-1).float()
+        homo_mae_loss = self.mae_loss(homo_outputs, kwargs['homos'].float())
+        homo_mse_loss = self.mse_loss(homo_outputs, kwargs['homos'].float())
 
         # lumo
-        lumo_outputs = lumo_outputs.view(-1)
-        lumo_mae_loss = self.mae_loss(lumo_outputs, kwargs['lumo_labels'])
-        lumo_mse_loss = self.mse_loss(lumo_outputs, kwargs['lumo_labels'])
+        lumo_outputs = lumo_outputs.view(-1).float()
+        lumo_mae_loss = self.mae_loss(lumo_outputs, kwargs['lumos'].float())
+        lumo_mse_loss = self.mse_loss(lumo_outputs, kwargs['lumos'].float())
 
         # total loss
-        loss = homo_mae_loss + lumo_mae_loss
+        loss = torch.sqrt(homo_mse_loss + lumo_mse_loss)
         return loss, {'homo_mae': homo_mae_loss.item(), 'homo_mse': homo_mse_loss.item(),
                       'lumo_mae': lumo_mae_loss.item(), 'lumo_mse': lumo_mse_loss.item()}
 
     def predict(self, inputs):
         # molecule embeddings
-        outputs = self.backbone(inputs).pooler_output
+        outputs = self.backbone(inputs).last_hidden_state[:, 0, :]
 
         # regression
-        for layer in self.regressors:
-            outputs = layer(outputs)
+        homo_outputs = self.homo_regressors[0](outputs[:, :self.embed_size])
+        lumo_outputs = self.lumo_regressors[0](outputs[:, self.embed_size:])
+        for homo_layer, lumo_layer in zip(self.homo_regressors[1:], self.lumo_regressors[1:]):
+            homo_outputs = homo_layer(homo_outputs)
+            lumo_outputs = lumo_layer(lumo_outputs)
 
-        return outputs[:, 0], outputs[:, 1]  # homos, lumos
+        return homo_outputs, lumo_outputs
 
 class ChemBertaForTwoPR2(torch.nn.Module):
     def __init__(self, hidden_size_list, dropout=0.1):
@@ -140,12 +143,12 @@ class ChemBertaForTwoPR2(torch.nn.Module):
             outputs = layer(outputs)
 
         # homo
-        homo_mae_loss = self.mae_loss(outputs[:, 0], kwargs['homo_labels'])
-        homo_mse_loss = self.mse_loss(outputs[:, 0], kwargs['homo_labels'])
+        homo_mae_loss = self.mae_loss(outputs[:, 0], kwargs['homos'])
+        homo_mse_loss = self.mse_loss(outputs[:, 0], kwargs['homos'])
 
         # lumo
-        lumo_mae_loss = self.mae_loss(outputs[:, 1], kwargs['lumo_labels'])
-        lumo_mse_loss = self.mse_loss(outputs[:, 1], kwargs['lumo_labels'])
+        lumo_mae_loss = self.mae_loss(outputs[:, 1], kwargs['lumos'])
+        lumo_mse_loss = self.mse_loss(outputs[:, 1], kwargs['lumos'])
 
         # total loss
         loss = homo_mae_loss + lumo_mae_loss
