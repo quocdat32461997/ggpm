@@ -1,12 +1,11 @@
 import torch
-from rdkit.Chem import MolFromSmiles
+from rdkit import Chem
 from rdkit.Chem.Descriptors import MolWt
-import moses
-from ggpm.ggpm import *
+from ggpm import *
 
 
 class Metrics:
-    MOL_WEIGHTS = [400, 3000]
+    OPV_MOL_WEIGHTS = [400, 3000]
 
     def __init__(self, homo_net, lumo_net, batch_size=512, ks=[50, 500], num_worker=2, device='cpu'):
         self.homo_net, self.lumo_net = None, None
@@ -20,7 +19,8 @@ class Metrics:
         self.device = device
         self.batch_size = batch_size
 
-    def get_recon_n_sample_metrics(self, output_set, test_set, train_set=None):
+    def get_recon_metrics(self, output_set, test_set, train_set=None):
+        import moses
         return moses.get_all_metrics(gen=output_set, k=self.ks, n_jobs=self.num_worker,
                                      device=self.device, batch_size=self.batch_size,
                                      test=test_set, train=train_set)
@@ -28,45 +28,63 @@ class Metrics:
     def mol_weight_indicator(self, output_set, test_set, train_set=None):
         # mw_list = self.get_recon_n_sample_metrics(output_set, test_set, train_set)#['weight']
 
-        mw_list = [MolWt(MolFromSmiles(smiles)) for smiles in output_set[:30]]
-        valids = [1 if Metrics.MOL_WEIGHTS[0] <= mw <= Metrics.MOL_WEIGHTS[1] else 0 for mw in mw_list]
+        mw_list = [MolWt(Chem.MolFromSmiles(smiles)) for smiles in output_set[:30]]
+        valids = [1 if Metrics.OPV_MOL_WEIGHTS[0] <= mw <= Metrics.OPV_MOL_WEIGHTS[1] else 0 for mw in mw_list]
+        valids = torch.tensor(valids)
+        return {'mw_valids': valids, 'mean_mw_valids': valids.mean(), 'std_mw_valids': valids.std()}
 
-        return valids, sum(valids) / len(valids)
+    def property_indicator(self, output_smiles, root, use_processed):
+        import evaluation.datasets as datasets
+        from torch_geometric.loader import DataLoader
 
-    def property_indicator(self, output_smiles):
-        # get homos and lumos
-        output_smiles = self.tokenizer(output_smiles, return_tensors='pt',
-                                       add_special_tokens=True, padding=True)['input_ids']
+        dataset = datasets.QM9(root=root)
+        if not use_processed:
+            dataset.process(output_smiles)
+            dataset = datasets.QM9(root=root)
+        data_loader = DataLoader(dataset, batch_size=self.batch_size)
+
+        homos, lumos = [], []
         with torch.no_grad():
-            #homos, lumos = self.property_predictor.predict(output_smiles)
-            homos = self.property_predictor.predict(output_smiles)
+            for data in data_loader:
+                homos.append(self.homo_net(data.z, data.pos, data.batch))
+                lumos.append(self.lumo_net(data.z, data.pos, data.batch))
+
+        homos = torch.stack(homos)
+        lumos = torch.stack(lumos)
+
         # homos and lumos in torch.tensor
-        #valids = torch.ones(len(homos))
+        valids = torch.ones(len(homos))
 
         # both negative
-        #valids *= (homos < 0) & (lumos < 0)
+        valids *= (homos < 0) & (lumos < 0)
 
         # abs_lumos < abs_homos
-        #valids *= lumos.abs() < homos.abs()
+        valids *= lumos.abs() < homos.abs()
 
         # lumos - homos > 0.8
-        #valids *= (lumos - homos) > 0.8
+        valids *= (lumos - homos) > 0.8
 
         # cast to float and compute mean
-        #valids = valids.float()
-        # return valids, valids.float().mean()
-        return homos, None
+        valids = valids.float()
 
-    def get_optimization_metrics(self, output_smiles, test_set, train_set):
-        prop_valids, property_i = None, None
+        return {'prop_valids': valids,
+                'mean_prop_valids': valids.mean(),
+                'std_prop_valids': valids.std(),
+                'mean_homos': homos.mean(),
+                'std_homos': homos.std(),
+                'mean_lumos': lumos.mean(),
+                'std_lumos': lumos.std()}
+
+    def get_optim_metrics(self, output_smiles, root, test_set, train_set, use_processed=False):
 
         # get property-indiactor
-        if self.property_predictor:
-            prop_valids, property_i = self.property_indicator(output_smiles[:30])
+        metrics = self.property_indicator(output_smiles[:30], root, use_processed)
 
         # get molecule-weight indicator
-        mw_valids, mol_weight_i = self.mol_weight_indicator(
+        metrics_ = self.mol_weight_indicator(
             output_set=output_smiles, test_set=test_set, train_set=train_set)
 
-        return {'prop_valids': prop_valids, 'property_i': property_i,
-                'mw_valids': mw_valids, 'mol_weight_i': mol_weight_i}
+        # update metrics
+        for k, v in metrics_.items():
+            metrics[k] = v
+        return metrics
