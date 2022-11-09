@@ -1,13 +1,17 @@
 import os
-import sys
 import os.path as osp
 import torch
 from tqdm import tqdm
 import torch.nn.functional as F
-from torch_geometric.data import download_url, extract_zip, Data, InMemoryDataset
-from typing import Callable, List, Optional
+from torch.utils.data import Dataset
+from torch_geometric.data.makedirs import makedirs
+from torch_geometric.data import Data
 from torch_scatter import scatter
-from rdkit.Chem import MolFromSmiles, AllChem
+from rdkit.Chem import AllChem
+from rdkit import Chem, RDLogger
+from rdkit.Chem.rdchem import BondType as BT
+from rdkit.Chem.rdchem import HybridizationType
+RDLogger.DisableLog('rdApp.*')
 
 atomrefs = {
     6: [0., 0., 0., 0., 0.],
@@ -31,47 +35,18 @@ atomrefs = {
 }
 
 
-class QM9(InMemoryDataset):
-    def __init__(self, root: str, transform: Optional[Callable] = None,
-                 pre_transform: Optional[Callable] = None,
-                 pre_filter: Optional[Callable] = None):
-        super().__init__(root, transform, pre_transform, pre_filter)
-        self.data, _ = torch.load(self.processed_paths[0])
+class QM9(Dataset):
+    def __init__(self, path):
+        super().__init__()
+        self.data = torch.load(path + '.pt')
 
-    @property
-    def processed_file_names(self) -> str:
-        return 'data_v3.pt'
-
-    def process(self, smiles_list):
-        try:
-            import rdkit
-            from rdkit import Chem, RDLogger
-            from rdkit.Chem.rdchem import BondType as BT
-            from rdkit.Chem.rdchem import HybridizationType
-            RDLogger.DisableLog('rdApp.*')
-
-        except ImportError:
-            rdkit = None
-
-        if rdkit is None:
-            print(("Using a pre-processed version of the dataset. Please "
-                   "install 'rdkit' to alternatively process the raw data."),
-                  file=sys.stderr)
-
-            data_list = torch.load(self.raw_paths[0])
-            data_list = [Data(**data_dict) for data_dict in data_list]
-
-            if self.pre_filter is not None:
-                data_list = [d for d in data_list if self.pre_filter(d)]
-
-            if self.pre_transform is not None:
-                data_list = [self.pre_transform(d) for d in data_list]
-
-            torch.save(self.collate(data_list), self.processed_paths[0])
-            return
-
+    @staticmethod
+    def process_data(smiles_list, root, path):
         types = {'H': 0, 'C': 1, 'N': 2, 'O': 3, 'F': 4}
         bonds = {BT.SINGLE: 0, BT.DOUBLE: 1, BT.TRIPLE: 2, BT.AROMATIC: 3}
+
+        root = osp.expanduser(osp.normpath(root))
+        makedirs(root)
 
         num_items = len(smiles_list)
         data_list = []
@@ -131,19 +106,12 @@ class QM9(InMemoryDataset):
                                   dtype=torch.float).t().contiguous()
                 x = torch.cat([x1.to(torch.float), x2], dim=-1)
 
-                name = None  # mol.GetProp('_Name')
-
                 data = Data(x=x, z=z, pos=pos, edge_index=edge_index,
-                            edge_attr=edge_attr, y=None, name=name, idx=i)
-
-                if self.pre_filter is not None and not self.pre_filter(data):
-                    continue
-                if self.pre_transform is not None:
-                    data = self.pre_transform(data)
+                            edge_attr=edge_attr, y=None, name=None, idx=i)
 
                 data_list.append(data)
             except:
                 pass
-        torch.save(self.collate(data_list), self.processed_paths[0])
+        torch.save(data_list, root + '/' + path + '.pt')
 
         print("Initial number of items: {}; Number of items ater processing: {}".format(num_items, len(data_list)))

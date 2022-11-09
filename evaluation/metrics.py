@@ -1,7 +1,6 @@
 import torch
 from rdkit import Chem
 from rdkit.Chem.Descriptors import MolWt
-from ggpm import *
 
 
 class Metrics:
@@ -25,23 +24,24 @@ class Metrics:
                                      device=self.device, batch_size=self.batch_size,
                                      test=test_set, train=train_set)
 
-    def mol_weight_indicator(self, output_set, test_set, train_set=None):
+    def get_mol_weight_indicator(self, output_set, test_set, train_set=None):
         # mw_list = self.get_recon_n_sample_metrics(output_set, test_set, train_set)#['weight']
 
-        mw_list = [MolWt(Chem.MolFromSmiles(smiles)) for smiles in output_set[:30]]
+        mw_list = [MolWt(Chem.MolFromSmiles(smiles)) for smiles in output_set]
         valids = [1 if Metrics.OPV_MOL_WEIGHTS[0] <= mw <= Metrics.OPV_MOL_WEIGHTS[1] else 0 for mw in mw_list]
-        valids = torch.tensor(valids)
+        valids = torch.tensor(valids, dtype=torch.float)
         return {'mw_valids': valids, 'mean_mw_valids': valids.mean(), 'std_mw_valids': valids.std()}
 
-    def property_indicator(self, output_smiles, root, use_processed):
-        import evaluation.datasets as datasets
+    def get_property_indicator(self, output_smiles, root, path, use_processed):
+        from evaluation.datasets import QM9
         from torch_geometric.loader import DataLoader
 
-        dataset = datasets.QM9(root=root)
+        processed_path = path
         if not use_processed:
-            dataset.process(output_smiles)
-            dataset = datasets.QM9(root=root)
-        data_loader = DataLoader(dataset, batch_size=self.batch_size)
+            QM9.process_data(output_smiles, root, path)
+            processed_path = root + '/' + path
+        dataset = QM9(processed_path)
+        data_loader = DataLoader(dataset.data, batch_size=self.batch_size)
 
         homos, lumos = [], []
         with torch.no_grad():
@@ -49,8 +49,8 @@ class Metrics:
                 homos.append(self.homo_net(data.z, data.pos, data.batch))
                 lumos.append(self.lumo_net(data.z, data.pos, data.batch))
 
-        homos = torch.stack(homos)
-        lumos = torch.stack(lumos)
+        homos = torch.concat(homos).view(-1)
+        lumos = torch.concat(lumos).view(-1)
 
         # homos and lumos in torch.tensor
         valids = torch.ones(len(homos))
@@ -73,16 +73,23 @@ class Metrics:
                 'mean_homos': homos.mean(),
                 'std_homos': homos.std(),
                 'mean_lumos': lumos.mean(),
-                'std_lumos': lumos.std()}
+                'std_lumos': lumos.std(),
+                'valid_idxs': [d.idx for d in dataset.data]}
 
-    def get_optim_metrics(self, output_smiles, root, test_set, train_set, use_processed=False):
+    def get_optim_metrics(self, root, path, output_smiles, test_smiles, train_smiles, use_processed=False):
 
         # get property-indiactor
-        metrics = self.property_indicator(output_smiles[:30], root, use_processed)
+        metrics = self.get_property_indicator(output_smiles, root, path, use_processed)
+
+        valid_idxs = metrics['valid_idxs']
+        output_smis, test_smis = [], []
+        for idx in valid_idxs:
+            output_smis.append(output_smiles[idx])
+            test_smis.append(test_smiles[idx])
 
         # get molecule-weight indicator
-        metrics_ = self.mol_weight_indicator(
-            output_set=output_smiles, test_set=test_set, train_set=train_set)
+        metrics_ = self.get_mol_weight_indicator(
+            output_set=output_smis, test_set=test_smis, train_set=train_smiles)
 
         # update metrics
         for k, v in metrics_.items():
