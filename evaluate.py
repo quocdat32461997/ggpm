@@ -29,7 +29,6 @@ def check_smiles(smi):
             Chem.SanitizeMol(mol)
         except:
             valid = False
-    print(smi, valid)
     return valid
 
 
@@ -38,14 +37,10 @@ def load_smiles(args):
     output_data = pd.read_csv(args.output_data)
     train_data = pd.read_csv(args.train_data)
 
-    # drop row w/ empty HOMO and LUMO
-    output_data = output_data.dropna().reset_index(drop=True)
-
     # get train, test, and output smiles
     test_smiles = output_data['original'].tolist()
     output_smiles = output_data['reconstructed'].tolist()
     train_smiles = train_data['SMILES'].tolist()
-
     return output_smiles, test_smiles, train_smiles
 
 
@@ -75,19 +70,12 @@ def evaluate_optim(args):
 def prescreen(args):
     # get valid molecules by property and molecular weight
     metrics = evaluate_optim(args)
-    valid_idxs = metrics['valid_idxs']
+
+    valid_idxs = metrics['mw_valid_idxs']
+    #valid_idxs = [i for i in metrics['prop_valid_idxs'] if i in metrics['mw_valid_idxs']]
 
     # get valid molecules by RDKit
-    valid_idxs = torch.tensor([idx for idx in valid_idxs if check_smiles(args.output_smiles[idx])],
-                              dtype=torch.int)
-
-    # combine all valids
-    valids = metrics['prop_valids'] * metrics['mw_valids']
-    valids = valids == 1
-    valid_idxs = torch.masked_select(valid_idxs, valids)
-
-    valid_smiles = [args.output_smiles[i] for i in valid_idxs]
-    return valid_smiles
+    return [args.output_smiles[idx] for idx in valid_idxs if check_smiles(args.output_smiles[idx])]
 
 
 if __name__ == '__main__':

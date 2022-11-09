@@ -67,8 +67,8 @@ class QM9(Dataset):
                 sp3 = []
                 num_hs = []
                 pos = []
-                for i, atom in enumerate(mol.GetAtoms()):
-                    pos.append(mol.GetConformer().GetAtomPosition(i))
+                for atom_i, atom in enumerate(mol.GetAtoms()):
+                    pos.append(mol.GetConformer().GetAtomPosition(atom_i))
 
                     type_idx.append(types[atom.GetSymbol()])
                     atomic_number.append(atom.GetAtomicNum())
@@ -105,7 +105,6 @@ class QM9(Dataset):
                 x2 = torch.tensor([atomic_number, aromatic, sp, sp2, sp3, num_hs],
                                   dtype=torch.float).t().contiguous()
                 x = torch.cat([x1.to(torch.float), x2], dim=-1)
-
                 data = Data(x=x, z=z, pos=pos, edge_index=edge_index,
                             edge_attr=edge_attr, y=None, name=None, idx=i)
 

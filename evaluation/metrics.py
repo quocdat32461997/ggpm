@@ -30,7 +30,9 @@ class Metrics:
         mw_list = [MolWt(Chem.MolFromSmiles(smiles)) for smiles in output_set]
         valids = [1 if Metrics.OPV_MOL_WEIGHTS[0] <= mw <= Metrics.OPV_MOL_WEIGHTS[1] else 0 for mw in mw_list]
         valids = torch.tensor(valids, dtype=torch.float)
-        return {'mw_valids': valids, 'mean_mw_valids': valids.mean(), 'std_mw_valids': valids.std()}
+        valid_idxs = torch.nonzero(valids).reshape(-1).tolist()
+
+        return {'mw_valid_idxs': valid_idxs, 'mw_valids': valids, 'mean_mw_valids': valids.mean(), 'std_mw_valids': valids.std()}
 
     def get_property_indicator(self, output_smiles, root, path, use_processed):
         from evaluation.datasets import QM9
@@ -62,7 +64,7 @@ class Metrics:
         valids *= lumos.abs() < homos.abs()
 
         # lumos - homos > 0.8
-        valids *= (lumos - homos) > 0.8
+        valids *= (lumos - homos) >= 0.8
 
         # cast to float and compute mean
         valids = valids.float()
@@ -74,22 +76,15 @@ class Metrics:
                 'std_homos': homos.std(),
                 'mean_lumos': lumos.mean(),
                 'std_lumos': lumos.std(),
-                'valid_idxs': [d.idx for d in dataset.data]}
+                'prop_valid_idxs': [d.idx for d in dataset.data]}
 
     def get_optim_metrics(self, root, path, output_smiles, test_smiles, train_smiles, use_processed=False):
 
         # get property-indiactor
         metrics = self.get_property_indicator(output_smiles, root, path, use_processed)
 
-        valid_idxs = metrics['valid_idxs']
-        output_smis, test_smis = [], []
-        for idx in valid_idxs:
-            output_smis.append(output_smiles[idx])
-            test_smis.append(test_smiles[idx])
-
-        # get molecule-weight indicator
         metrics_ = self.get_mol_weight_indicator(
-            output_set=output_smis, test_set=test_smis, train_set=train_smiles)
+            output_set=output_smiles, test_set=test_smiles, train_set=train_smiles)
 
         # update metrics
         for k, v in metrics_.items():
