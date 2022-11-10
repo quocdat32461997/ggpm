@@ -103,7 +103,7 @@ with torch.no_grad():
             outputs['org_homo'].extend(org_data[:, 1].tolist())
             outputs['org_lumo'].extend(org_data[:, 2].tolist())
             outputs['homo'].extend([h if h is None else h.item() for h in properties[0]])
-            outputs['lumo'].extend([l if l is None else h.item() for l in properties[1]])
+            outputs['lumo'].extend([l if l is None else l.item() for l in properties[1]])
 
 # save outputs
 outputs = pd.DataFrame.from_dict(outputs)
