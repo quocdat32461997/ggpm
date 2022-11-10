@@ -20,6 +20,7 @@ parser.add_argument('--path-to-config', required=True)
 parser.add_argument('--model-type', required=True)
 parser.add_argument('--test-data', required=True)
 parser.add_argument('--output', required=True)
+parser.add_argument('--verbose', action='store_true')
 
 # parse args
 args = parser.parse_args()
@@ -82,7 +83,8 @@ with torch.no_grad():
             x, h_, l_ = x
 
             # display results
-            print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, h, l))
+            if args.verbose:
+                print('Org: {}, Dec: {}, HOMO: {}, LUMO: {}'.format(x, y, h, l))
 
             # add to outputs
             outputs['original'].append(x)
