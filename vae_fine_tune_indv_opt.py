@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
+from torch.optim import Adam
 import torch.optim.lr_scheduler as lr_scheduler
 
 import math
@@ -22,28 +22,32 @@ lg.setLevel(rdkit.RDLogger.CRITICAL)
 # get path to config
 parser = argparse.ArgumentParser()
 parser.add_argument('--path-to-config', required=True)
+parser.add_argument('--model-finetune-type', required=True)
+parser.add_argument('--model-pretrained-type', required=True)
 
 # get configs
-args = Configs(path=parser.parse_args().path_to_config)
+args = parser.parse_args()
+configs = Configs(path=args.path_to_config)
 
-vocab = [x.strip("\r\n ").split() for x in open(args.vocab_)]
+vocab = [x.strip("\r\n ").split() for x in open(configs.vocab_)]
 MolGraph.load_fragments([x[0] for x in vocab if eval(x[-1])])
-args.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
+configs.vocab = PairVocab([(x, y) for x, y, _ in vocab], cuda=False)
 
 # save configs
-args.to_json(args.save_dir + '/configs.json')
+configs.to_json(configs.save_dir + '/configs.json')
 
 # load model
-model_class = PropOptVAE
-model = to_cuda(model_class(args))
+model_finetune_class = OPVNet.get_model(args.model_finetune_type)
+model_pretrained_class = OPVNet.get_model(args.model_pretrained_type)
+model = to_cuda(model_finetune_class(configs))
 
 # load saved encoder only
-if args.saved_model:
-    if args.load_encoder_only is True:
-        model = copy_encoder(model, HierPropertyVAE(args), args.saved_model)
+if configs.saved_model:
+    if configs.load_encoder_only is True:
+        model = copy_encoder(model, model_pretrained_class(configs), configs.saved_model)
         print('Successfully copied encoder weights.')
     else:  # default to load entire encoder-decoder model
-        model = copy_model(model, HierPropertyVAE(args), args.saved_model, w_property=args.load_property_head)
+        model = copy_model(model, model_pretrained_class(configs), configs.saved_model, w_property=configs.load_property_head)
         print('Successfully copied encoder-decoder weights.')
 
 else:
@@ -53,22 +57,22 @@ else:
         else:
             nn.init.xavier_normal_(param)
 
-if args.load_epoch >= 0:
-    model.load_state_dict(torch.load(args.save_dir + "/model." + str(args.load_epoch)))
+if configs.load_epoch >= 0:
+    model.load_state_dict(torch.load(configs.save_dir + "/model." + str(configs.load_epoch)))
 
 print("Model #Params: %dK" % (sum([x.nelement() for x in model.parameters()]) / 1000,))
 
-multi_optim = MultipleOptimizer(opts=[optim.Adam([param for name, param in model.named_parameters()
+multi_optim = MultipleOptimizer(opts=[Adam([param for name, param in model.named_parameters()
                                                   if ('decoder' not in name and 'homo_linear' not in name and 'lumo_linear' not in name)],
-                                                 lr=args.encoder_slr),
-                                      optim.Adam([param for name, param in model.named_parameters() if 'decoder' in name],
-                                                 lr=args.decoder_lr),
-                                      optim.Adam([param for name, param in model.named_parameters() if 'homo_linear' in name],
-                                                 lr=args.homo_lr),
-                                      optim.Adam([param for name, param in model.named_parameters() if 'lumo_linear' in name],
-                                                 lr=args.lumo_lr)],
-                                decay_lr=True, anneal_rate=args.anneal_rate)
-early_stopping = EarlyStopping(patience=5, verbose=True, delta=0.01, path=args.save_dir + '/model.{}'.format('best'))
+                                                 lr=configs.encoder_lr),
+                                      Adam([param for name, param in model.named_parameters() if 'decoder' in name],
+                                                 lr=configs.decoder_lr),
+                                      Adam([param for name, param in model.named_parameters() if 'homo_linear' in name],
+                                                 lr=configs.homo_lr),
+                                      Adam([param for name, param in model.named_parameters() if 'lumo_linear' in name],
+                                                 lr=configs.lumo_lr)],
+                                decay_lr=True, anneal_rate=configs.anneal_rate)
+early_stopping = EarlyStopping(patience=5, verbose=True, delta=0.01, path=configs.save_dir + '/model.{}'.format('best'))
 
 
 def param_norm(m): return math.sqrt(sum([p.norm().item() ** 2 for p in m.parameters()]))
@@ -76,13 +80,13 @@ def grad_norm(m): return math.sqrt(sum([p.grad.norm().item() ** 2 for p in m.par
 
 
 total_step = 0
-beta = args.beta
+beta = configs.beta
 metrics = {}
 num_loss_clip = 5
 loss_clip_break = False
 
-for epoch in range(args.load_epoch + 1, args.epoch):
-    dataset = DataFolder(args.data, args.batch_size)
+for epoch in range(configs.load_epoch + 1, configs.epoch):
+    dataset = DataFolder(configs.data, configs.batch_size)
 
     for batch in dataset:
         total_step += 1
@@ -92,7 +96,7 @@ for epoch in range(args.load_epoch + 1, args.epoch):
 
         # backprop
         loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm)
+        nn.utils.clip_grad_norm_(model.parameters(), configs.clip_norm)
         multi_optim.step()
         if loss_clipped:
             num_loss_clip -= 1
@@ -104,8 +108,8 @@ for epoch in range(args.load_epoch + 1, args.epoch):
         for k, v in metrics_.items():
             metrics[k] = v if not k in metrics else metrics[k] + v
 
-        if total_step % args.print_iter == 0:
-            metrics = {k: v / args.print_iter for k, v in metrics.items()}
+        if total_step % configs.print_iter == 0:
+            metrics = {k: v / configs.print_iter for k, v in metrics.items()}
             print("[%d] Beta: %.3f, PNorm: %.2f, GNorm: %.2f" % (
                 total_step, beta,  param_norm(model), grad_norm(model)))  # print step
 
@@ -116,18 +120,18 @@ for epoch in range(args.load_epoch + 1, args.epoch):
             # reset metrics
             metrics = {}
 
-        if args.save_iter >= 0 and total_step % args.save_iter == 0:
-            n_iter = total_step // args.save_iter - 1
-            torch.save(model.state_dict(), args.save_dir + "/model." + str(n_iter))
+        if configs.save_iter >= 0 and total_step % configs.save_iter == 0:
+            n_iter = total_step // configs.save_iter - 1
+            torch.save(model.state_dict(), configs.save_dir + "/model." + str(n_iter))
             multi_optim.decay()
             print("learning rate: %.6f" % multi_optim.get_lr())
 
         # evaluate
-        if total_step % args.eval_iter == 0:
+        if total_step % configs.eval_iter == 0:
             model.eval()
             val_loss, val_metrics = [], {}
             with torch.no_grad():
-                val_dataset = DataFolder(args.val_data, args.batch_size)
+                val_dataset = DataFolder(configs.val_data, configs.batch_size)
                 for batch in val_dataset:
                     loss, metrics_, _ = model(*batch, beta=beta)
 
@@ -157,7 +161,7 @@ for epoch in range(args.load_epoch + 1, args.epoch):
         break
 
     del dataset
-    if args.save_iter == -1:
-        torch.save(model.state_dict(), args.save_dir + "/model." + str(epoch))
+    if configs.save_iter == -1:
+        torch.save(model.state_dict(), configs.save_dir + "/model." + str(epoch))
         multi_optim.decay()
         print("learning rate: %.6f" % multi_optim.get_lr())

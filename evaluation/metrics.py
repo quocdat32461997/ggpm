@@ -6,7 +6,7 @@ from rdkit.Chem.Descriptors import MolWt
 class Metrics:
     OPV_MOL_WEIGHTS = [400, 3000]
 
-    def __init__(self, homo_net, lumo_net, batch_size=512, ks=[50, 500], num_worker=2, device='cpu'):
+    def __init__(self, homo_net, lumo_net, batch_size=512, ks=[50, 10000], num_worker=2, device='cpu'):
         self.homo_net, self.lumo_net = None, None
         if homo_net and lumo_net:
             self.homo_net = homo_net

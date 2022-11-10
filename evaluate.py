@@ -38,8 +38,12 @@ def load_smiles(args):
     train_data = pd.read_csv(args.train_data)
 
     # get train, test, and output smiles
-    test_smiles = output_data['original'].tolist()
-    output_smiles = output_data['reconstructed'].tolist()
+    try: # get smiles from output files
+        test_smiles = output_data['original'].tolist()
+        output_smiles = output_data['reconstructed'].tolist()
+    except: # get smiles from test sets
+        test_smiles = output_data['SMILES']
+        output_smiles = output_data['SMILES']
     train_smiles = train_data['SMILES'].tolist()
     return output_smiles, test_smiles, train_smiles
 

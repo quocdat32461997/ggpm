@@ -60,6 +60,8 @@ except:
         # Try renaming due to unmatched name keys
         state_dict = rename_optimizer_state_keys(torch.load(configs.output_model,
                                                            map_location=device))
+        print([(k, v.shape) for k, v in state_dict.items()])
+        print(model)
         model.load_state_dict(state_dict)
         del state_dict
 model.eval()
