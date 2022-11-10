@@ -18,6 +18,8 @@ lg.setLevel(rdkit.RDLogger.CRITICAL)
 parser = argparse.ArgumentParser()
 parser.add_argument('--path-to-config', required=True)
 parser.add_argument('--model-type', required=True)
+parser.add_argument('--test-data', required=True)
+parser.add_argument('--output', required=True)
 
 # parse args
 args = parser.parse_args()
@@ -29,14 +31,14 @@ args = parser.parse_args()
 # get configs
 configs = Configs(path=args.path_to_config)
 
-if configs.test_data.endswith('.csv'):
-    configs.test_data = pd.read_csv(configs.test_data)
+if args.test_data.endswith('.csv'):
+    args.test_data = pd.read_csv(args.test_data)
     # drop row w/ empty HOMO and LUMO
     if configs.pretrained == False:
-        configs.test_data = configs.test_data.dropna().reset_index(drop=True)
-    configs.test_data = configs.test_data.to_numpy()
+        args.test_data = args.test_data.dropna().reset_index(drop=True)
+    args.test_data = args.test_data.to_numpy()
 else:
-    configs.test_data = [[x, float(x), float(l)] for line in open(configs.test_data)
+    args.test_data = [[x, float(x), float(l)] for line in open(args.test_data)
                       for x, h, l in line.strip("\r\n ").split()]
 
 vocab = [x.strip("\r\n ").split() for x in open(configs.vocab_)]
@@ -60,7 +62,7 @@ except:
         del state_dict
 model.eval()
 
-dataset = MoleculeDataset(configs.test_data, configs.vocab, configs.atom_vocab, configs.batch_size)
+dataset = MoleculeDataset(args.test_data, configs.vocab, configs.atom_vocab, configs.batch_size)
 loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate_fn=lambda x: x[0])
 
 torch.manual_seed(configs.seed)
@@ -75,7 +77,7 @@ with torch.no_grad():
         properties, logs_, dec_smiles = (logs_, preds[0], preds[1]) if isinstance(preds, tuple) \
             else (([None]*configs.batch_size, [None]*configs.batch_size), logs_, preds)
         logs.extend(logs_)
-        for x, y, h, l in zip(configs.test_data, dec_smiles, properties[0], properties[1]):
+        for x, y, h, l in zip(args.test_data, dec_smiles, properties[0], properties[1]):
             # extract original labels
             x, h_, l_ = x
 
@@ -91,7 +93,7 @@ with torch.no_grad():
             outputs['lumo'].append(l if l is None else l.item())
 # save outputs
 outputs = pd.DataFrame.from_dict(outputs)
-outputs.to_csv(configs.output, index=False)
+outputs.to_csv(args.output, index=False)
 
 with open('logs.pkl', 'wb') as file:
     pickle.dump(logs, file)

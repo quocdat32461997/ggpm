@@ -149,3 +149,4 @@ dmypy.json
 **/bert-loves-chemistry
 **/chemberta
 **/data
+**/test
