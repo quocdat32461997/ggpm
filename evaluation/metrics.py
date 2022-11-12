@@ -20,13 +20,18 @@ class Metrics:
 
     def get_recon_metrics(self, output_set, test_set, train_set=None):
         import moses
-        return moses.get_all_metrics(gen=output_set, k=self.ks, n_jobs=self.num_worker,
+        metrics =  moses.get_all_metrics(gen=output_set, k=self.ks, n_jobs=self.num_worker,
                                      device=self.device, batch_size=self.batch_size,
                                      test=test_set, train=train_set)
+        # reconstruction accuracy
+        print(output_set[0], test_set[0])
+        acc = torch.tensor([x == y for x, y in zip(output_set, test_set)], dtype=torch.float).mean()
+        metrics['recon_acc'] = acc.item()
+
+        return metrics
+        
 
     def get_mol_weight_indicator(self, output_set, test_set, train_set=None):
-        # mw_list = self.get_recon_n_sample_metrics(output_set, test_set, train_set)#['weight']
-
         mw_list = [MolWt(Chem.MolFromSmiles(smiles)) for smiles in output_set]
         valids = [1 if Metrics.OPV_MOL_WEIGHTS[0] <= mw <= Metrics.OPV_MOL_WEIGHTS[1] else 0 for mw in mw_list]
         valids = torch.tensor(valids, dtype=torch.float)

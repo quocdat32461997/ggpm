@@ -3,6 +3,7 @@ from ggpm import *
 import argparse
 import pandas as pd
 import os
+import torch.nn.functional as F
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 
@@ -37,15 +38,20 @@ def load_smiles(args):
     output_data = pd.read_csv(args.output_data)
     train_data = pd.read_csv(args.train_data)
 
+    output_homos, output_lumos = None, None
     # get train, test, and output smiles
+    train_smiles = train_data['SMILES'].tolist()
     try: # get smiles from output files
         test_smiles = output_data['original'].tolist()
         output_smiles = output_data['reconstructed'].tolist()
+        output_homos = output_data['homo'].tolist()
+        output_lumos = output_data['lumo'].tolist()
     except: # get smiles from test sets
-        test_smiles = output_data['SMILES']
-        output_smiles = output_data['SMILES']
-    train_smiles = train_data['SMILES'].tolist()
-    return output_smiles, test_smiles, train_smiles
+        test_smiles = output_data['SMILES'].tolist()
+        output_smiles = output_data['SMILES'].tolist()
+    target_homos = output_data['org_homo'].tolist()
+    target_lumos = output_data['org_lumo'].tolist()
+    return output_smiles, test_smiles, train_smiles, target_homos, target_lumos, output_homos, output_lumos
 
 
 def evaluate_recon(args):
@@ -67,7 +73,18 @@ def evaluate_optim(args):
     optim_metrics = metrics.get_optim_metrics(args.root, args.path,
                                               args.output_smiles, args.test_smiles, args.train_smiles,
                                               use_processed=args.use_processed)
+    
+    # compute mae of homos and lumos
+    mae_homos = F.l1_loss(torch.tensor(args.target_homos, dtype=torch.float), torch.tensor(args.output_homos, dtype=torch.float))
+    mae_lumos = F.l1_loss(torch.tensor(args.target_lumos, dtype=torch.float), torch.tensor(args.output_lumos, dtype=torch.float))
+    optim_metrics['mae_homos'] = mae_homos
+    optim_metrics['mae_lumos'] = mae_lumos
 
+    # get rid of valids
+    del optim_metrics['prop_valids']
+    del optim_metrics['prop_valid_idxs']
+    del optim_metrics['mw_valids']
+    del optim_metrics['mw_valid_idxs']
     return optim_metrics
 
 
@@ -87,7 +104,7 @@ if __name__ == '__main__':
     assert args.mode in ['recon', 'optim', 'prescreen']
 
     # load data
-    args.output_smiles, args.test_smiles, args.train_smiles = load_smiles(args)
+    args.output_smiles, args.test_smiles, args.train_smiles, args.target_homos, args.target_lumos, args.output_homos, args.output_lumos = load_smiles(args)
 
     if args.mode == 'recon':
         print(evaluate_recon(args))
