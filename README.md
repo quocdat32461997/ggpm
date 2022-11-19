@@ -46,7 +46,13 @@ python3 reconstruct.py --model model_type --path-to-config path/to/reconstructio
 
 ### Property-guided Molecule Optimization
 ```
-python3 optimizer.py --model model_type --path-to-config path/to/configs.json --optimize-type type --output output/file/name.csv --optim-step max_decoding_steps --latent-lr LR_to_update_gradients --delta improvement_threshold --threshold mse_gap_threshold --patience no_improvement_patience
+python3 optimize.py --model model_type --path-to-config path/to/configs.json --optimize-type type --output output/file/name.csv --optim-step max_decoding_steps --latent-lr LR_to_update_gradients --delta improvement_threshold --threshold mse_gap_threshold --patience no_improvement_patience
+```
+
+
+### Evaluate for "reconstruction" or "optimization" task
+```
+python3 evaluate.py --train-data data/used/for/training --output-data file/to/be/evaluated --mode mode/to/evaluate/reconstruction/or/optmization --root /dir/to/save/processed/data --path /path/to/save/processed/data
 ```
 
 **NOTICE**
