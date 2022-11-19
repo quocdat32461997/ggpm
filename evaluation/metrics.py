@@ -39,25 +39,31 @@ class Metrics:
 
         return {'mw_valid_idxs': valid_idxs, 'mw_valids': valids, 'mean_mw_valids': valids.mean(), 'std_mw_valids': valids.std()}
 
-    def get_property_indicator(self, output_smiles, root, path, use_processed):
+    def get_property_indicator(self, homos=None, lumos=None, output_smiles=False, root=False, path=False, use_processed=False, use_preds=False):
         from evaluation.datasets import QM9
         from torch_geometric.loader import DataLoader
+        metrics = {}
+        if use_preds:
+            homos = torch.tensor(homos, dtype=torch.float)
+            lumos = torch.tensor(lumos, dtype=torch.float)
+        else:
+            processed_path = path
+            if not use_processed:
+                QM9.process_data(output_smiles, root, path)
+                processed_path = root + '/' + path
+            dataset = QM9(processed_path)
+            data_loader = DataLoader(dataset.data, batch_size=self.batch_size)
 
-        processed_path = path
-        if not use_processed:
-            QM9.process_data(output_smiles, root, path)
-            processed_path = root + '/' + path
-        dataset = QM9(processed_path)
-        data_loader = DataLoader(dataset.data, batch_size=self.batch_size)
+            homos, lumos = [], []
+            with torch.no_grad():
+                for data in data_loader:
+                    homos.append(self.homo_net(data.z, data.pos, data.batch))
+                    lumos.append(self.lumo_net(data.z, data.pos, data.batch))
 
-        homos, lumos = [], []
-        with torch.no_grad():
-            for data in data_loader:
-                homos.append(self.homo_net(data.z, data.pos, data.batch))
-                lumos.append(self.lumo_net(data.z, data.pos, data.batch))
+            homos = torch.concat(homos).view(-1)
+            lumos = torch.concat(lumos).view(-1)
 
-        homos = torch.concat(homos).view(-1)
-        lumos = torch.concat(lumos).view(-1)
+            metrics['prop_valid_idxs'] = [d.idx for d in dataset.data]
 
         # homos and lumos in torch.tensor
         valids = torch.ones(len(homos))
@@ -74,19 +80,20 @@ class Metrics:
         # cast to float and compute mean
         valids = valids.float()
 
-        return {'prop_valids': valids,
-                'mean_prop_valids': valids.mean(),
-                'std_prop_valids': valids.std(),
-                'mean_homos': homos.mean(),
-                'std_homos': homos.std(),
-                'mean_lumos': lumos.mean(),
-                'std_lumos': lumos.std(),
-                'prop_valid_idxs': [d.idx for d in dataset.data]}
+        # update metrics
+        metrics['prop_valids'] = valids,
+        metrics['mean_prop_valids'] = valids.mean(),
+        metrics['std_prop_valids'] = valids.std(),
+        metrics['mean_homos'] =homos.mean(),
+        metrics['std_homos'] = homos.std(),
+        metrics['mean_lumos'] = lumos.mean(),
+        metrics['std_lumos'] = lumos.std(),
+        return metrics
 
-    def get_optim_metrics(self, root, path, output_smiles, test_smiles, train_smiles, use_processed=False):
+    def get_optim_metrics(self, homos, lumos, root, path, output_smiles, test_smiles, train_smiles, use_processed=False, use_preds=False):
 
         # get property-indiactor
-        metrics = self.get_property_indicator(output_smiles, root, path, use_processed)
+        metrics = self.get_property_indicator(homos, lumos, output_smiles, root, path, use_processed, use_preds)
 
         metrics_ = self.get_mol_weight_indicator(
             output_set=output_smiles, test_set=test_smiles, train_set=train_smiles)

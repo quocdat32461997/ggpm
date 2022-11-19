@@ -82,14 +82,13 @@ loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0, collate
 
 torch.manual_seed(configs.seed)
 random.seed(configs.seed)
-print('test size', len(configs.test_data))
 total, acc, outputs = 0, 0, {'original': [], 'reconstructed': [],
                              'org_homo': [], 'org_lumo': [], 'homo': [], 'lumo': []}
 logs = []
 #with torch.no_grad():
 for i, batch in enumerate(loader):
     org_data = configs.test_data[configs.batch_size * i: configs.batch_size * (i + 1)]
-    logs_, preds = model.reconstruct(batch, args=configs)
+    logs_, preds = control_model(batch, args=configs)
     properties, logs_, dec_smiles = (logs_, preds[0], preds[1]) if isinstance(preds, tuple) \
             else (([None]*len(preds), [None]*len(preds)), logs_, preds)
     logs.extend(logs_)
