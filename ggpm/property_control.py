@@ -45,7 +45,7 @@ class PropertyVAEOptimizer(nn.Module):
 
         # add gaussian noise
         root_vecs, root_kl = self.model.rsample(root_vecs, perturb=False)
-
+        
         # optimize HOMOs & LUMOs
         func = self._get_optimize_func()
         with torch.enable_grad():
@@ -102,7 +102,7 @@ class PropertyVAEOptimizer(nn.Module):
                 # update h_vec and l_vec
                 h_vec = self.update_params(h_vec, h_out, h_tar)
                 l_vec = self.update_params(l_vec, l_out, l_tar)
-
+                
             # assign vecs back
             h_vecs.append(h_vec)
             l_vecs.append(l_vec)
