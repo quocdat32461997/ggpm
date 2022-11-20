@@ -1,6 +1,8 @@
 # ggpm
 GGPM - GraphNN Generation of Photovoltaic Molecules
 
+* [Thesis Paper](https://github.com/quocdat32461997/ggpm/blob/main/UTD_Dissertations_and_Theses___Dat__Eric__Ngo-11.pdf)
+
 ## Setup environments
 For easy, run
 ```
