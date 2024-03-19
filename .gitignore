@@ -152,3 +152,4 @@ dmypy.json
 **/test
 **/*.png
 **/*.xls
+**/.vscode

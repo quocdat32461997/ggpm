@@ -226,8 +226,7 @@ class IncGraph(IncBase):
                 self.mol.AddBond(a1, a2, bond_type)
                 new_bonds.append((a1, a2))
 
-        # if the potential-motif has attachment-points only
-        # then, not a valid motif
+        # check if possible to reconstruct the sub-molecule (partial-graph + potential-motif)
         if valid:
             tmp_mol = get_sub_mol(self.mol, self.batch[batch_idx] + new_atoms)
             tmp_mol = sanitize(tmp_mol, kekulize=False)

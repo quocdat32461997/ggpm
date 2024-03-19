@@ -7,7 +7,7 @@
     "output": "motif_chem_trio_pretrained_w_tie_embedding_prediction_hier_to_chem_data.csv",
     "vocab_": "trio_polymer_vocab.txt",
     "atom_vocab_": null,
-    "save_dir": "./ckpt/motif_chem_trio_pretrained_w_tie_embedding_hier",
+    "save_dir": "./ckpt/motif_chem_trio_pretrained_wo_tie_embedding_hier",
     "output_model": "./ckpt/motif_chem_trio_pretrained_w_tie_embedding_hier/model.19",
     "load_encoder_only": false,
     "load_property_head": false,
